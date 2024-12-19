@@ -1,7 +1,3 @@
-# THIS PROJECT IS UNFINISHED!
-
-Please do not use this project until it is finished. It is not ready for use yet.
-
 # slc replay format
 
 A tiny and incredibly fast replay format for storing Geometry Dash replays.
@@ -9,6 +5,18 @@ A tiny and incredibly fast replay format for storing Geometry Dash replays.
 ### Warning!
 
 This format is not meant to be universal; an `slc` replay from one bot may not work with another bot. If you find yourself constantly switching between bots, you may want to consider using bots with a more universal format, like `.gdr`.
+
+## To-do
+
+These are features that are going to be implemented / were implemented already.
+
+- [X] Replay reading/parsing
+- [X] Blob optimization
+- [X] Custom meta object
+- [X] TPS changing support
+- [ ] Multithreaded replay reading
+- [ ] SIMD blob reading
+- [ ] Possibly CUDA accelerated blob reading for incredibly large (>10m size) blobs?
 
 ## Features
 
