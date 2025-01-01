@@ -9,15 +9,9 @@ add_library(libslc INTERFACE)
 
 target_include_directories(libslc INTERFACE include)
 
-add_executable(libslc_test
-  test/main.cpp
+add_executable(slcconv
+  src/slcconv.cpp
 )
 
-target_link_libraries(libslc_test PRIVATE libslc)
+target_link_libraries(slcconv PRIVATE libslc)
 
-add_custom_command(
-    TARGET libslc_test POST_BUILD
-    COMMAND libslc_test
-    WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
-    COMMENT "Running test..."
-)

@@ -14,9 +14,6 @@ These are features that are going to be implemented / were implemented already.
 - [X] Blob optimization
 - [X] Custom meta object
 - [X] TPS changing support
-- [ ] Multithreaded replay reading
-- [ ] SIMD blob reading
-- [ ] Possibly CUDA accelerated blob reading for incredibly large (>10m size) blobs?
 
 ## Features
 
@@ -24,7 +21,7 @@ These are features that are going to be implemented / were implemented already.
 - **Fast**: The format is incredibly fast to parse and write.
 - **Extensible**: The format allows you to add your own metadata to the file. Adding metadata to inputs isn't possible due to it being unnecessary.
 - **Comprehensive**: The format allows you to account for every single edge case, or input type you can think of.
-- **Safe**: No such thing as a corrupted replay file. Built in checksums ensure that the file is always valid when loaded.
+- **Safe**: No such thing as a corrupted replay file.
 
 ## Motivation
 

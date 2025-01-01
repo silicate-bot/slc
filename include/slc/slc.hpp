@@ -212,6 +212,7 @@ input.
 template <typename M = void> class Replay {
 private:
   static constexpr char HEADER[] = "SILL";
+  static constexpr char FOOTER[] = "EOM";
 
   using Meta = M;
   using Self = Replay<Meta>;
@@ -238,7 +239,6 @@ private:
 public:
   std::vector<Input> m_inputs;
   float m_tps = 240.0;
-  uint64_t m_seed = 30;
   Meta m_meta;
 
   [[nodiscard]]
@@ -251,12 +251,18 @@ public:
     }
 
     replay.m_tps = _util::binRead<float>(s);
+    uint64_t metaSize = _util::binRead<uint64_t>(s);
+    if (metaSize != sizeof(Meta)) {
+      return std::unexpected(ReplayError::OpenFileError);
+    }
+
     replay.m_meta = _util::binRead<Meta>(s);
 
     uint64_t length = _util::binRead<uint64_t>(s);
     replay.m_inputs.resize(length);
 
     uint64_t blobCount = _util::binRead<uint64_t>(s);
+
     std::vector<_Blob> blobs(blobCount);
     for (auto &blob : blobs) {
       blob = _Blob::readFromMeta(s);
@@ -264,6 +270,12 @@ public:
 
     for (int i = 0; i < blobCount; i++) {
       blobs.at(i).read(s, replay.m_inputs);
+    }
+
+    char footer[3];
+    s.read(footer, sizeof(footer));
+    if (std::memcmp(footer, FOOTER, sizeof(FOOTER)) != 0) {
+      return std::unexpected(ReplayError::OpenFileError);
     }
 
     return replay;
@@ -276,6 +288,7 @@ public:
   void write(std::ostream &s) {
     s.write(HEADER, 4);
     _util::binWrite(s, m_tps);
+    _util::binWrite(s, static_cast<uint64_t>(sizeof(Meta)));
     _util::binWrite(s, m_meta);
     _util::binWrite(s, static_cast<uint64_t>(m_inputs.size()));
 
@@ -331,7 +344,9 @@ public:
           blobs[i - 1].m_byteSize = blobs[i].m_byteSize;
           blobs[i].m_length = 0;
           zeroSizedBlobs++;
-        } else if (blobs[i].m_byteSize < blobs[i - 1].m_byteSize) {
+        } else if (blobs[i].m_byteSize < blobs[i - 1].m_byteSize &&
+          blobs[i - 1].m_byteSize * blobs[i].m_length < sizeof(_Blob)
+        ) {
           blobs[i - 1].m_length += blobs[i].m_length;
           blobs[i].m_length = 0;
           zeroSizedBlobs++;
@@ -349,6 +364,8 @@ public:
     for (const auto &blob : blobs) {
       blob.write(s, m_inputs);
     }
+
+    s.write(FOOTER, 3);
   }
 };
 
