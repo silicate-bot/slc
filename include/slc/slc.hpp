@@ -286,6 +286,7 @@ public:
   }
 
   const std::vector<Input> &getInputs() const { return m_inputs; }
+  const size_t length() const { return m_inputs.size(); }
 
   [[nodiscard]]
   static std::expected<Self, ReplayError> read(std::istream &s) {
