@@ -59,23 +59,51 @@ private:
   // of RAM, but it's not okay if it takes up disk space.
   //
   // Replay inputs will be saved to disk based on their parent blob's byte size.
-  // Still, there's no reason to make the replay use more memory than necessary!
   uint64_t m_state;
 
+
 public:
+  // The TPS that is to be set.
+  // This is only set when the input type is TPS.
+  double m_tps = 0.0;
+
+  // These are helper fields that are actually included in the state.
+  // They're here for ease of use.
+
+  // The frame of the input. This automatically gets converted to a delta when
+  // saving.
+  uint64_t m_frame = 0;
+
+  // Whether the input is for player 2.
+  bool m_player2 = false;
+
+  // The button associated with the input.
+  InputType m_button = InputType::Skip;
+
+  // Whether the input is a hold or release.
+  bool m_holding = false;
+
   Input() : m_state(0) {}
-  Input(uint64_t delta, InputType type, bool p2, bool hold) {
+  Input(uint64_t currentFrame, uint64_t delta, InputType type, bool p2, bool hold) {
     m_state =
         (delta << 5) | (static_cast<uint8_t>(type) << 2) | (p2 << 1) | hold;
+
+    m_frame = currentFrame + delta;
+    m_player2 = p2;
+    m_button = type;
+    m_holding = hold;
   }
 
-  Input(float tps) {
-    m_state = (*reinterpret_cast<uint64_t *>(&tps) << 5) |
-              (static_cast<uint8_t>(InputType::TPS) << 2);
+  Input(uint64_t currentFrame, uint64_t delta, float tps) {
+    m_state = (delta << 5) | (static_cast<uint8_t>(InputType::TPS) << 2);
+
+    m_frame = currentFrame + delta;
+    m_tps = tps;
+    m_button = InputType::TPS;
   }
 
   inline const uint8_t requiredBytes() const {
-    if (type() == InputType::TPS)
+    if (m_button == InputType::TPS)
       return 8;
 
     if (m_state < 0x100) {
@@ -89,46 +117,11 @@ public:
     }
   }
 
-  /**
-   * Get the internal state of the input.
-   */
-  inline const uint64_t state() const { return m_state; }
-
-  /**
-   * Get the input type (button) of the input.
-   */
-  inline const InputType type() const {
-    return static_cast<InputType>((m_state & 0x1C) >> 2);
-  }
-
-  /**
-   * Get whether the input is a hold or release.
-   * This value should be set only for input types 1-3.
-   */
-  inline const bool hold() const { return (m_state & 0x1) != 0; }
-
-  /**
-   * Get whether the input is for player 2.
-   * This value should only be set for input types 1-3.
-   */
-  inline const bool player2() const { return (m_state & 0x2) != 0; }
-
-  /**
-   * Get the frame delta of the input.
-   * This value should always be set.
-   */
-  inline const uint64_t delta() const { return (m_state ^ 0x1F) >> 5; }
-
-  /**
-   * Get the new TPS that is to be set.
-   * This function does not check if the input is a TPS input.
-   * DO NOT use if the type is not TPS.
-   */
-  inline const float tps() const {
-    uint64_t tps = ((m_state ^ 0x1F) >> 5) & ((1ull << 32ull) - 1);
-
-    // yea um yea
-    return *reinterpret_cast<float *>(&tps);
+  void updateHelpers(uint64_t currentFrame) {
+    m_frame = currentFrame + (m_state >> 5);
+    m_player2 = (m_state & 2) >> 1;
+    m_button = static_cast<InputType>((m_state & 0b11100) >> 2);
+    m_holding = m_state & 1;
   }
 };
 
@@ -173,20 +166,32 @@ public:
     uint64_t byteMask =
         m_byteSize == 8 ? -((uint64_t)1) : (1ull << (m_byteSize * 8ull)) - 1ull;
 
+
     for (int i = m_start; i < m_start + m_length; i++) {
-      uint64_t state = inputs.at(i).state() & byteMask;
+      uint64_t state = inputs.at(i).m_state & byteMask;
 
       s.write(
           reinterpret_cast<const char *>(reinterpret_cast<uintptr_t>(&state)),
           m_byteSize);
+
+      if (inputs.at(i).m_button == Input::InputType::TPS) {
+        _util::binWrite(s, inputs.at(i).m_tps);
+      }
     }
   }
 
-  void read(std::istream &s, std::vector<Input> &inputs) {
+  void read(std::istream &s, std::vector<Input> &inputs, uint64_t& frame) {
     for (int i = m_start; i < m_start + m_length; i++) {
       s.read(reinterpret_cast<char *>(
                  reinterpret_cast<uintptr_t>(&inputs.at(i).m_state)),
              m_byteSize);
+            
+      inputs.at(i).updateHelpers(frame);
+      frame = inputs.at(i).m_frame;
+
+      if (inputs.at(i).m_button == Input::InputType::TPS) {
+        inputs.at(i).m_tps = _util::binRead<double>(s);
+      }
     }
   }
 };
@@ -236,10 +241,51 @@ private:
   // It's okay if writes are a little longer than reads; when saving a macro
   // the important bit is that it *saves correctly*.
 
-public:
+private:
   std::vector<Input> m_inputs;
-  float m_tps = 240.0;
+
+public:
+  double m_tps = 240.0;
   Meta m_meta;
+
+  void addInput(const uint64_t frame, const Input::InputType type,
+                const bool p2, const bool hold) {
+    uint64_t currentFrame = m_inputs.empty() ? 0 : m_inputs.back().m_frame;
+
+    if (frame < currentFrame) {
+      throw std::runtime_error("Frame is less than the current frame.");
+    }
+
+    if (type == Input::InputType::TPS) {
+      throw std::runtime_error("TPS inputs must be added with addTPSInput.");
+    }
+
+    m_inputs.emplace_back(currentFrame, frame - currentFrame, type, p2, hold);
+  }
+
+  void addTPSInput(const uint64_t frame, const float tps) {
+    uint64_t currentFrame = m_inputs.empty() ? 0 : m_inputs.back().m_frame;
+
+    if (frame < currentFrame) {
+      throw std::runtime_error("Frame is less than the current frame.");
+    }
+
+    m_inputs.emplace_back(currentFrame, frame - currentFrame, tps);
+  }
+
+  void popInput() { m_inputs.pop_back(); }
+  void clearInputs() { m_inputs.clear(); }
+
+  void pruneAfterFrame(const uint64_t frame) {
+    m_inputs.erase(std::remove_if(m_inputs.begin(), m_inputs.end(),
+                                  [frame](const Input &input)
+                                  {
+                                    return input.m_frame >= frame;
+                                  }),
+                   m_inputs.end());
+  }
+
+  const std::vector<Input> &getInputs() const { return m_inputs; }
 
   [[nodiscard]]
   static std::expected<Self, ReplayError> read(std::istream &s) {
@@ -250,7 +296,7 @@ public:
       return std::unexpected(ReplayError::OpenFileError);
     }
 
-    replay.m_tps = _util::binRead<float>(s);
+    replay.m_tps = _util::binRead<double>(s);
     uint64_t metaSize = _util::binRead<uint64_t>(s);
     if (metaSize != sizeof(Meta)) {
       return std::unexpected(ReplayError::OpenFileError);
@@ -268,8 +314,10 @@ public:
       blob = _Blob::readFromMeta(s);
     }
 
+    uint64_t frame = 0;
+
     for (int i = 0; i < blobCount; i++) {
-      blobs.at(i).read(s, replay.m_inputs);
+      blobs.at(i).read(s, replay.m_inputs, frame);
     }
 
     char footer[3];

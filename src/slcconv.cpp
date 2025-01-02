@@ -133,11 +133,8 @@ int main() {
 
   std::cout << "Converting replay...\n";
 
-  uint64_t currentFrame = 0;
   for (const auto &input : from.m_inputs) {
-    replay.m_inputs.emplace_back(input.m_frame - currentFrame, static_cast<slc::Input::InputType>(input.m_button), input.m_player2, input.m_holding);
-
-    currentFrame = input.m_frame;
+    replay.addInput(input.m_frame, static_cast<slc::Input::InputType>(input.m_button), input.m_player2, input.m_holding);
   }
 
   auto start = std::chrono::high_resolution_clock::now();
