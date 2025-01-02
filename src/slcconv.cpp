@@ -114,35 +114,41 @@ struct ReplayMeta {
   char _reserved[56];
 };
 
-int main() {
-  slc::Replay<ReplayMeta> replay;
-  OldReplay oldReplay;
+int main()
+{
+    slc::Replay<ReplayMeta> replay;
+    OldReplay oldReplay;
 
-  std::cout << "Input legacy replay path: ";
-  std::string path;
-  std::cin >> path;
+    std::cout << "Input legacy replay path: ";
+    std::string path;
+    std::cin >> path;
 
-  int oldReplaySize = std::filesystem::file_size(path);
-  OldReplay from = OldReplay::fromFile(path).value();
+    int oldReplaySize = std::filesystem::file_size(path);
+    OldReplay from = OldReplay::fromFile(path).value();
 
-  std::cout << "Input output path: ";
-  std::cin >> path;
+    std::cout << "Input output path: ";
+    std::cin >> path;
 
-  replay.m_tps = from.fps();
-  replay.m_meta = {from.m_seed};
+    replay.m_tps = from.fps();
+    replay.m_meta = {from.m_seed};
 
-  std::cout << "Converting replay...\n";
+    std::cout << "Converting replay...\n";
 
-  for (const auto &input : from.m_inputs) {
-    replay.addInput(input.m_frame, static_cast<slc::Input::InputType>(input.m_button), input.m_player2, input.m_holding);
-  }
+    for (const auto &input : from.m_inputs)
+    {
+        replay.addInput(input.m_frame, static_cast<slc::Input::InputType>(input.m_button), input.m_player2, input.m_holding);
+    }
 
-  auto start = std::chrono::high_resolution_clock::now();
-  std::ofstream file(path, std::ios::binary);
-  replay.write(file);
-  auto end = std::chrono::high_resolution_clock::now();
-  std::cout << "Converted replay successfully written to: " << path << "\n";
-  std::cout << "Conversion took: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms\n";
-  int newReplaySize = std::filesystem::file_size(path);
-  std::println("Replay size: {}b ({}b savings)", newReplaySize, oldReplaySize - newReplaySize);
+    {
+        auto start = std::chrono::high_resolution_clock::now();
+        std::ofstream file(path, std::ios::binary);
+        replay.write(file);
+        auto end = std::chrono::high_resolution_clock::now();
+        std::cout << "Converted replay successfully written to: " << path << "\n";
+        std::cout << "Conversion took: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms\n";
+        int newReplaySize = std::filesystem::file_size(path);
+        std::println("Replay size: {}b ({}b savings)", newReplaySize, oldReplaySize - newReplaySize);
+    }
+
+    return 0;
 }

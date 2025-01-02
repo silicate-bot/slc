@@ -393,13 +393,21 @@ public:
           blobs[i - 1].m_byteSize = blobs[i].m_byteSize;
           blobs[i].m_length = 0;
           zeroSizedBlobs++;
+          continue;
         } else if (blobs[i].m_byteSize < blobs[i - 1].m_byteSize &&
           blobs[i - 1].m_byteSize * blobs[i].m_length < sizeof(_Blob)
         ) {
           blobs[i - 1].m_length += blobs[i].m_length;
           blobs[i].m_length = 0;
           zeroSizedBlobs++;
+          continue;
         }
+      }
+
+      if (blobs[i].m_byteSize == blobs[i - 1].m_byteSize) {
+        blobs[i - 1].m_length += blobs[i].m_length;
+        blobs[i].m_length = 0;
+        zeroSizedBlobs++;
       }
     }
 
