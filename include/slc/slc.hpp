@@ -224,6 +224,9 @@ private:
 
   enum class ReplayError {
     OpenFileError,
+    HeaderMismatch,
+    FooterMismatch,
+    MetaSizeMismatch
   };
 
   // It's much faster to do one lookup rather than two lookups for
@@ -294,13 +297,13 @@ public:
     char header[4];
     s.read(header, sizeof(header));
     if (std::memcmp(header, HEADER, sizeof(HEADER)) != 0) {
-      return std::unexpected(ReplayError::OpenFileError);
+      return std::unexpected(ReplayError::HeaderMismatch);
     }
 
     replay.m_tps = _util::binRead<double>(s);
     uint64_t metaSize = _util::binRead<uint64_t>(s);
     if (metaSize != sizeof(Meta)) {
-      return std::unexpected(ReplayError::OpenFileError);
+      return std::unexpected(ReplayError::MetaSizeMismatch);
     }
 
     replay.m_meta = _util::binRead<Meta>(s);
@@ -324,7 +327,7 @@ public:
     char footer[3];
     s.read(footer, sizeof(footer));
     if (std::memcmp(footer, FOOTER, sizeof(FOOTER)) != 0) {
-      return std::unexpected(ReplayError::OpenFileError);
+      return std::unexpected(ReplayError::FooterMismatch);
     }
 
     return replay;
