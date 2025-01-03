@@ -109,62 +109,58 @@ struct OldReplay {
     inline void addInput(const Input &&input) { m_inputs.emplace_back(input); }
 };
 
-struct ReplayMeta {
-  uint64_t m_seed;
-  char _reserved[56];
+struct ReplayMeta
+{
+    uint64_t m_seed;
+    char _reserved[56];
 };
 
-int main() {
-  slc::Replay<ReplayMeta> replay;
-  OldReplay oldReplay;
+int main()
+{
+    slc::Replay<ReplayMeta> replay;
+    OldReplay oldReplay;
 
-  std::cout << "Input legacy replay path: ";
-  std::string path;
-  std::cin >> path;
+    std::cout << "Input legacy replay path: ";
+    std::string path;
+    std::getline(std::cin >> std::ws, path);
 
-  int oldReplaySize = std::filesystem::file_size(path);
-  OldReplay from = OldReplay::fromFile(path).value();
-
-  std::cout << "Input output path: ";
-  std::cin >> path;
-
-  replay.m_tps = from.fps();
-  replay.m_meta = {from.m_seed};
-
-  std::cout << "Converting replay...\n";
-
-  for (const auto &input : from.m_inputs) {
-    replay.addInput(input.m_frame, static_cast<slc::Input::InputType>(input.m_button), input.m_player2, input.m_holding);
-  }
-
+    if (path.front() == '"' && path.back() == '"')
     {
+        path = path.substr(1, path.size() - 2);
+    }
+
+    int oldReplaySize = std::filesystem::file_size(path);
+    OldReplay from = OldReplay::fromFile(path).value();
+
+    std::cout << "Input output path: ";
+    std::getline(std::cin >> std::ws, path);
+
+    if (path.front() == '"' && path.back() == '"')
+    {
+        path = path.substr(1, path.size() - 2);
+    }
+
+    replay.m_tps = from.fps();
+    replay.m_meta = {from.m_seed};
+
+    std::cout << "Converting replay...\n";
+
+    for (const auto &input : from.m_inputs)
+    {
+        replay.addInput(input.m_frame, static_cast<slc::Input::InputType>(input.m_button), input.m_player2, input.m_holding);
+    }
+
     auto start = std::chrono::high_resolution_clock::now();
-    std::ofstream file(path, std::ios::binary);
-    replay.write(file);
+    {
+        std::ofstream file(path, std::ios::binary);
+        replay.write(file);
+    }
     auto end = std::chrono::high_resolution_clock::now();
     std::cout << "Converted replay successfully written to: " << path << "\n";
+
     std::cout << "Conversion took: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms\n";
     int newReplaySize = std::filesystem::file_size(path);
     std::println("Replay size: {}b ({}b savings)", newReplaySize, oldReplaySize - newReplaySize);
-    }
-
-  // Re-read the replay to ensure it was written correctly
-    std::ifstream replayFile(path, std::ios::binary);
-    auto result = slc::Replay<ReplayMeta>::read(replayFile);
-    if (!result) {
-        std::cerr << "Failed to read replay: " << static_cast<int>(result.error()) << std::endl;
-        return 1;
-    }
-
-    auto readReplay = result.value();
-
-    for (const auto &input : readReplay.getInputs()) {
-        if (input.m_button == slc::Input::InputType::TPS) {
-            std::cout << "Frame: " << input.m_frame << " Button: " << static_cast<int>(input.m_button) << " Player2: " << input.m_player2 << " Holding: " << input.m_holding << " TPS: " << input.m_tps << std::endl;
-        } else {
-            std::cout << "Frame: " << input.m_frame << " Button: " << static_cast<int>(input.m_button) << " Player2: " << input.m_player2 << " Holding: " << input.m_holding << std::endl;
-        }
-    }
 
     return 0;
 }

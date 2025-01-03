@@ -280,12 +280,9 @@ public:
   void clearInputs() { m_inputs.clear(); }
 
   void pruneAfterFrame(const uint64_t frame) {
-    m_inputs.erase(std::remove_if(m_inputs.begin(), m_inputs.end(),
-                                  [frame](const Input &input)
-                                  {
-                                    return input.m_frame >= frame;
-                                  }),
-                   m_inputs.end());
+    std::erase_if(m_inputs, [frame](const Input &input) {
+      return input.m_frame >= frame;
+    });
   }
 
   const std::vector<Input> &getInputs() const { return m_inputs; }
@@ -296,7 +293,7 @@ public:
     Self replay;
     char header[4];
     s.read(header, sizeof(header));
-    if (std::memcmp(header, HEADER, sizeof(HEADER)) != 0) {
+    if (std::memcmp(header, HEADER, sizeof(header)) != 0) {
       return std::unexpected(ReplayError::HeaderMismatch);
     }
 
@@ -326,7 +323,7 @@ public:
 
     char footer[3];
     s.read(footer, sizeof(footer));
-    if (std::memcmp(footer, FOOTER, sizeof(FOOTER)) != 0) {
+    if (std::memcmp(footer, FOOTER, sizeof(footer)) != 0) {
       return std::unexpected(ReplayError::FooterMismatch);
     }
 
