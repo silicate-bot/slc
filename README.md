@@ -6,14 +6,31 @@ A tiny and incredibly fast replay format for storing Geometry Dash replays.
 
 This format is not meant to be universal; an `slc` replay from one bot may not work with another bot. If you find yourself constantly switching between bots, you may want to consider using bots with a more universal format, like `.gdr`.
 
-## To-do
+## Example
 
-These are features that are going to be implemented / were implemented already.
+```cpp
+using InputType = slc::Input::InputType;
 
-- [X] Replay reading/parsing
-- [X] Blob optimization
-- [X] Custom meta object
-- [X] TPS changing support
+// Declare the meta by using a struct
+struct ReplayMeta {
+  uint64_t seed;
+};
+
+slc::Replay<ReplayMeta> replay;
+// Set tps by directly changing the member
+replay.m_tps = 480.0;
+
+// Add inputs to the replay
+replay.addInput(400, InputType::Jump, false, true);
+replay.addInput(500, InputType::Jump, false, false);
+
+// Change the TPS mid-replay
+replay.addTPSInput(1000, 720.0);
+
+// Save the replay
+std::ostream file("out.slc");
+replay.write(file);
+```
 
 ## Features
 
