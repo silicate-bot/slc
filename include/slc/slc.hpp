@@ -61,7 +61,6 @@ private:
   // Replay inputs will be saved to disk based on their parent blob's byte size.
   uint64_t m_state;
 
-
 public:
   // The TPS that is to be set.
   // This is only set when the input type is TPS.
@@ -84,7 +83,8 @@ public:
   bool m_holding = false;
 
   Input() : m_state(0) {}
-  Input(uint64_t currentFrame, uint64_t delta, InputType type, bool p2, bool hold) {
+  Input(uint64_t currentFrame, uint64_t delta, InputType type, bool p2,
+        bool hold) {
     m_state =
         (delta << 5) | (static_cast<uint8_t>(type) << 2) | (p2 << 1) | hold;
 
@@ -166,7 +166,6 @@ public:
     uint64_t byteMask =
         m_byteSize == 8 ? -((uint64_t)1) : (1ull << (m_byteSize * 8ull)) - 1ull;
 
-
     for (int i = m_start; i < m_start + m_length; i++) {
       uint64_t state = inputs.at(i).m_state & byteMask;
 
@@ -180,12 +179,12 @@ public:
     }
   }
 
-  void read(std::istream &s, std::vector<Input> &inputs, uint64_t& frame) {
+  void read(std::istream &s, std::vector<Input> &inputs, uint64_t &frame) {
     for (int i = m_start; i < m_start + m_length; i++) {
       s.read(reinterpret_cast<char *>(
                  reinterpret_cast<uintptr_t>(&inputs.at(i).m_state)),
              m_byteSize);
-            
+
       inputs.at(i).updateHelpers(frame);
       frame = inputs.at(i).m_frame;
 
@@ -224,9 +223,11 @@ private:
 
   enum class ReplayError {
     OpenFileError,
-    HeaderMismatch,
-    FooterMismatch,
-    MetaSizeMismatch
+    HeaderMismatchError,
+    FooterMismatchError,
+    MetaSizeMismatchError,
+
+    IncorrectFrameError,
   };
 
   // It's much faster to do one lookup rather than two lookups for
@@ -251,12 +252,25 @@ public:
   double m_tps = 240.0;
   Meta m_meta;
 
-  void addInput(const uint64_t frame, const Input::InputType type,
-                const bool p2, const bool hold) {
+  /**
+   * Add an input to the replay.
+   *
+   * This mutates the underlying `m_inputs` vector.
+   * Do not use this to add TPS changing (`Input::InputType::TPS`) inputs, use
+   * [`addTPSInput`] instead.
+   *
+   * # Errors
+   * - IncorrectFrameError if the frame that's being added is earlier than the
+   * frame of the last input.
+   * - Throws a runtime error if the method is used to add a TPS input.
+   */
+  std::expected<void, ReplayError> addInput(const uint64_t frame,
+                                            const Input::InputType type,
+                                            const bool p2, const bool hold) {
     uint64_t currentFrame = m_inputs.empty() ? 0 : m_inputs.back().m_frame;
 
     if (frame < currentFrame) {
-      throw std::runtime_error("Frame is less than the current frame.");
+      return std::unexpected(ReplayError::IncorrectFrameError);
     }
 
     if (type == Input::InputType::TPS) {
@@ -264,43 +278,97 @@ public:
     }
 
     m_inputs.emplace_back(currentFrame, frame - currentFrame, type, p2, hold);
+
+    return {};
   }
 
-  void addTPSInput(const uint64_t frame, const float tps) {
+  /**
+   * Add a TPS change input to the replay.
+   *
+   * This mutates the underlying `m_inputs` vector.
+   * # Errors
+   * - IncorrectFrameError if the frame that's being added is earlier than the
+   * frame of the last input.
+   */
+  std::expected<void, ReplayError> addTPSInput(const uint64_t frame,
+                                               const float tps) {
     uint64_t currentFrame = m_inputs.empty() ? 0 : m_inputs.back().m_frame;
 
     if (frame < currentFrame) {
-      throw std::runtime_error("Frame is less than the current frame.");
+      return std::unexpected(ReplayError::IncorrectFrameError);
     }
 
     m_inputs.emplace_back(currentFrame, frame - currentFrame, tps);
+
+    return {};
   }
 
+  /**
+   * Remove the last input from the replay.
+   *
+   * This mutates the underlying `m_inputs` vector.
+   */
   void popInput() { m_inputs.pop_back(); }
+
+  /**
+   * Remove all inputs from the replay.
+   *
+   * This calls `.clear()` on the underlying `m_inputs` vector.
+   */
   void clearInputs() { m_inputs.clear(); }
 
+  /**
+   * Remove all inputs on or after a specified frame.
+   *
+   * The important thng to note here that the method also removes
+   * inputs that happen on the same frame as `frame`.
+   *
+   * This mutates the underlying `m_inputs` vector.
+   */
   void pruneAfterFrame(const uint64_t frame) {
     std::erase_if(m_inputs, [frame](const Input &input) {
       return input.m_frame >= frame;
     });
   }
 
+  /**
+   * Get a const reference to the underlying `m_inputs` vector.
+   *
+   * This method is not used to mutate the vector. In order to do that, use the
+   * designated methods.
+   */
   const std::vector<Input> &getInputs() const { return m_inputs; }
+
+  /**
+   * Get the length of the replay.
+   *
+   * This is a convenience method that calls `.size()` on the `m_inputs` vector.
+   */
   const size_t length() const { return m_inputs.size(); }
 
+  /**
+   * Read a replay from a stream.
+   *
+   * This mutates all values in the class.
+   *
+   * # Errors
+   * - HeaderMismatchError if the header doesn't match
+   * - MetaSizeMismatchError if the meta's size doesn't match
+   * - FooterMismatchError if the footer doesn't match
+   */
   [[nodiscard]]
   static std::expected<Self, ReplayError> read(std::istream &s) {
     Self replay;
     char header[4];
     s.read(header, sizeof(header));
     if (std::memcmp(header, HEADER, sizeof(header)) != 0) {
-      return std::unexpected(ReplayError::HeaderMismatch);
+      return std::unexpected(ReplayError::HeaderMismatchError);
     }
 
     replay.m_tps = _util::binRead<double>(s);
     uint64_t metaSize = _util::binRead<uint64_t>(s);
     if (metaSize != sizeof(Meta)) {
-      return std::unexpected(ReplayError::MetaSizeMismatch);
+      return std::unexpected(ReplayError::MetaSizeMismatchError);
     }
 
     replay.m_meta = _util::binRead<Meta>(s);
@@ -324,7 +392,7 @@ public:
     char footer[3];
     s.read(footer, sizeof(footer));
     if (std::memcmp(footer, FOOTER, sizeof(footer)) != 0) {
-      return std::unexpected(ReplayError::FooterMismatch);
+      return std::unexpected(ReplayError::FooterMismatchError);
     }
 
     return replay;
@@ -334,7 +402,7 @@ public:
    * Save a replay to a stream.
    * Empty replays are supported.
    */
-  void write(std::ostream &s) {
+  const void write(std::ostream &s) {
     s.write(HEADER, 4);
     _util::binWrite(s, m_tps);
     _util::binWrite(s, static_cast<uint64_t>(sizeof(Meta)));
@@ -395,8 +463,8 @@ public:
           zeroSizedBlobs++;
           continue;
         } else if (blobs[i].m_byteSize < blobs[i - 1].m_byteSize &&
-          blobs[i - 1].m_byteSize * blobs[i].m_length < sizeof(_Blob)
-        ) {
+                   blobs[i - 1].m_byteSize * blobs[i].m_length <
+                       sizeof(_Blob)) {
           blobs[i - 1].m_length += blobs[i].m_length;
           blobs[i].m_length = 0;
           zeroSizedBlobs++;
