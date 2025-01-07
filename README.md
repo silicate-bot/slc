@@ -9,6 +9,8 @@ This format is not meant to be universal; an `slc` replay from one bot may not w
 ## Example
 
 ```cpp
+#include <slc/slc.hpp>
+
 using InputType = slc::Input::InputType;
 
 // Declare the meta by using a struct
