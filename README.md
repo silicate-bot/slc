@@ -46,3 +46,5 @@ replay.write(file);
 
 Currently used replay formats are either incredibly slow or incredibly big, or both. Inefficient storage of replay data leads to lack of shareability
 for very large files. Notoriously tiny formats (like `.ybot`) are incredibly slow to parse and write, due to them using variable length integers. The most popular replay format (`.gdr`) uses msgpack or json for serialization, which is incredibly slow and wasteful.
+
+I (peony) strongly discourage the usage of GDR2. It's unattributed derivative work of this format without my permission.
