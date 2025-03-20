@@ -196,6 +196,23 @@ public:
   }
 };
 
+template <typename M> class ReplayBase {
+protected:
+  std::vector<Input> m_inputs;
+
+public:
+  double m_tps = 240.0;
+  M m_meta;
+};
+
+template <> class ReplayBase<void> {
+protected:
+  std::vector<Input> m_inputs;
+
+public:
+  double m_tps = 240.0;
+};
+
 /**
  * An slc replay.
  *
@@ -219,7 +236,7 @@ input.
  * and setting the meta length to zero. This is the default behavior.
  * Please note that the meta must exactly be `void` for this behavior to work.
  */
-template <typename M = void> class Replay {
+template <typename M = void> class Replay : public ReplayBase<M> {
 private:
   static constexpr char HEADER[] = "SILL";
   static constexpr char FOOTER[] = "EOM";
@@ -251,13 +268,7 @@ private:
   // It's okay if writes are a little longer than reads; when saving a macro
   // the important bit is that it *saves correctly*.
 
-private:
-  std::vector<Input> m_inputs;
-
 public:
-  double m_tps = 240.0;
-  typename std::enable_if_t<!std::is_void_v<M>, Meta> m_meta;
-
   /**
    * Add an input to the replay.
    *
@@ -273,7 +284,8 @@ public:
   std::expected<void, ReplayError> addInput(const uint64_t frame,
                                             const Input::InputType type,
                                             const bool p2, const bool hold) {
-    uint64_t currentFrame = m_inputs.empty() ? 0 : m_inputs.back().m_frame;
+    uint64_t currentFrame =
+        this->m_inputs.empty() ? 0 : this->m_inputs.back().m_frame;
 
     if (frame < currentFrame) {
       return std::unexpected(ReplayError::IncorrectFrameError);
@@ -283,7 +295,8 @@ public:
       throw std::runtime_error("TPS inputs must be added with addTPSInput.");
     }
 
-    m_inputs.emplace_back(currentFrame, frame - currentFrame, type, p2, hold);
+    this->m_inputs.emplace_back(currentFrame, frame - currentFrame, type, p2,
+                                hold);
 
     return {};
   }
@@ -298,13 +311,14 @@ public:
    */
   std::expected<void, ReplayError> addTPSInput(const uint64_t frame,
                                                const float tps) {
-    uint64_t currentFrame = m_inputs.empty() ? 0 : m_inputs.back().m_frame;
+    uint64_t currentFrame =
+        this->m_inputs.empty() ? 0 : this->m_inputs.back().m_frame;
 
     if (frame < currentFrame) {
       return std::unexpected(ReplayError::IncorrectFrameError);
     }
 
-    m_inputs.emplace_back(currentFrame, frame - currentFrame, tps);
+    this->m_inputs.emplace_back(currentFrame, frame - currentFrame, tps);
 
     return {};
   }
@@ -314,14 +328,14 @@ public:
    *
    * This mutates the underlying `m_inputs` vector.
    */
-  void popInput() { m_inputs.pop_back(); }
+  void popInput() { this->m_inputs.pop_back(); }
 
   /**
    * Remove all inputs from the replay.
    *
    * This calls `.clear()` on the underlying `m_inputs` vector.
    */
-  void clearInputs() { m_inputs.clear(); }
+  void clearInputs() { this->m_inputs.clear(); }
 
   /**
    * Remove all inputs on or after a specified frame.
@@ -332,7 +346,7 @@ public:
    * This mutates the underlying `m_inputs` vector.
    */
   void pruneAfterFrame(const uint64_t frame) {
-    std::erase_if(m_inputs, [frame](const Input &input) {
+    std::erase_if(this->m_inputs, [frame](const Input &input) {
       return input.m_frame >= frame;
     });
   }
@@ -343,14 +357,14 @@ public:
    * This method is not used to mutate the vector. In order to do that, use the
    * designated methods.
    */
-  const std::vector<Input> &getInputs() const { return m_inputs; }
+  const std::vector<Input> &getInputs() const { return this->m_inputs; }
 
   /**
    * Get the length of the replay.
    *
    * This is a convenience method that calls `.size()` on the `m_inputs` vector.
    */
-  const size_t length() const { return m_inputs.size(); }
+  const size_t length() const { return this->m_inputs.size(); }
 
   /**
    * Read a replay from a stream.
@@ -416,16 +430,16 @@ public:
    */
   const void write(std::ostream &s) {
     s.write(HEADER, 4);
-    _util::binWrite(s, m_tps);
+    _util::binWrite(s, this->m_tps);
 
     if constexpr (std::is_void_v<Meta>) {
       _util::binWrite(s, static_cast<uint64_t>(0));
     } else {
       _util::binWrite(s, static_cast<uint64_t>(sizeof(Meta)));
-      _util::binWrite(s, m_meta);
+      _util::binWrite(s, this->m_meta);
     }
 
-    _util::binWrite(s, static_cast<uint64_t>(m_inputs.size()));
+    _util::binWrite(s, static_cast<uint64_t>(this->m_inputs.size()));
 
     // Can't preallocate memory here unfortunately; since blobs
     // are highly dynamic and one input can change the blob count, this
@@ -437,8 +451,8 @@ public:
     // incredibly unlikely, that it's worth the tradeoff.
     std::vector<_Blob> blobs;
     uint64_t currentBlobSize = 0;
-    for (size_t i = 0; i < m_inputs.size(); i++) {
-      const auto &input = m_inputs.at(i);
+    for (size_t i = 0; i < this->m_inputs.size(); i++) {
+      const auto &input = this->m_inputs.at(i);
       uint8_t inputSize = input.requiredBytes();
 
       if (blobs.empty()) {
@@ -505,7 +519,7 @@ public:
     }
 
     for (const auto &blob : blobs) {
-      blob.write(s, m_inputs);
+      blob.write(s, this->m_inputs);
     }
 
     s.write(FOOTER, 3);
