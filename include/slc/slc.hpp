@@ -196,22 +196,11 @@ public:
   }
 };
 
-template <typename M> class ReplayBase {
-protected:
-  std::vector<Input> m_inputs;
-
-public:
-  double m_tps = 240.0;
+template <typename M> class MetaContainer {
   M m_meta;
 };
 
-template <> class ReplayBase<void> {
-protected:
-  std::vector<Input> m_inputs;
-
-public:
-  double m_tps = 240.0;
-};
+template <> class MetaContainer<void> {};
 
 /**
  * An slc replay.
@@ -236,7 +225,7 @@ input.
  * and setting the meta length to zero. This is the default behavior.
  * Please note that the meta must exactly be `void` for this behavior to work.
  */
-template <typename M = void> class Replay : public ReplayBase<M> {
+template <typename M = void> class Replay : public MetaContainer<M> {
 private:
   static constexpr char HEADER[] = "SILL";
   static constexpr char FOOTER[] = "EOM";
@@ -268,7 +257,11 @@ private:
   // It's okay if writes are a little longer than reads; when saving a macro
   // the important bit is that it *saves correctly*.
 
+private:
+  std::vector<Input> m_inputs;
+
 public:
+  double m_tps = 240.0;
   /**
    * Add an input to the replay.
    *
