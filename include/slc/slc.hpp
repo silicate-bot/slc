@@ -3,6 +3,7 @@
 
 #include <expected>
 #include <iostream>
+#include <type_traits>
 #include <vector>
 
 namespace slc {
@@ -212,6 +213,11 @@ inputs;
  * Inputs are stored using frame deltas; differences in frame from the previous
 input.
  * This allows blobs to consistently be of smaller size.
+ *
+ * The replay meta (M template argument) can be set to void. This effectively
+ * treats the meta as a zero-sized type, omitting it from the final replay
+ * and setting the meta length to zero. This is the default behavior.
+ * Please note that the meta must exactly be `void` for this behavior to work.
  */
 template <typename M = void> class Replay {
 private:
@@ -367,11 +373,17 @@ public:
 
     replay.m_tps = _util::binRead<double>(s);
     uint64_t metaSize = _util::binRead<uint64_t>(s);
-    if (metaSize != sizeof(Meta)) {
-      return std::unexpected(ReplayError::MetaSizeMismatchError);
-    }
+    if constexpr (std::is_same_v<Meta, void>) {
+      if (metaSize != 0) {
+        return std::unexpected(ReplayError::MetaSizeMismatchError);
+      }
+    } else {
+      if (metaSize != sizeof(Meta)) {
+        return std::unexpected(ReplayError::MetaSizeMismatchError);
+      }
 
-    replay.m_meta = _util::binRead<Meta>(s);
+      replay.m_meta = _util::binRead<Meta>(s);
+    }
 
     uint64_t length = _util::binRead<uint64_t>(s);
     replay.m_inputs.resize(length);
@@ -405,8 +417,14 @@ public:
   const void write(std::ostream &s) {
     s.write(HEADER, 4);
     _util::binWrite(s, m_tps);
-    _util::binWrite(s, static_cast<uint64_t>(sizeof(Meta)));
-    _util::binWrite(s, m_meta);
+
+    if constexpr (std::is_same_v<Meta, void>) {
+      _util::binWrite(s, static_cast<uint64_t>(0));
+    } else {
+      _util::binWrite(s, static_cast<uint64_t>(sizeof(Meta)));
+      _util::binWrite(s, m_meta);
+    }
+
     _util::binWrite(s, static_cast<uint64_t>(m_inputs.size()));
 
     // Can't preallocate memory here unfortunately; since blobs
