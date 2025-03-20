@@ -256,7 +256,7 @@ private:
 
 public:
   double m_tps = 240.0;
-  Meta m_meta;
+  typename std::enable_if_t<!std::is_void_v<M>, Meta> m_meta;
 
   /**
    * Add an input to the replay.
@@ -373,7 +373,7 @@ public:
 
     replay.m_tps = _util::binRead<double>(s);
     uint64_t metaSize = _util::binRead<uint64_t>(s);
-    if constexpr (std::is_same_v<Meta, void>) {
+    if constexpr (std::is_void_v<Meta>) {
       if (metaSize != 0) {
         return std::unexpected(ReplayError::MetaSizeMismatchError);
       }
@@ -418,7 +418,7 @@ public:
     s.write(HEADER, 4);
     _util::binWrite(s, m_tps);
 
-    if constexpr (std::is_same_v<Meta, void>) {
+    if constexpr (std::is_void_v<Meta>) {
       _util::binWrite(s, static_cast<uint64_t>(0));
     } else {
       _util::binWrite(s, static_cast<uint64_t>(sizeof(Meta)));
