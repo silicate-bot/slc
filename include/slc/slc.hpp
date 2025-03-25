@@ -197,6 +197,7 @@ public:
 };
 
 template <typename M> class MetaContainer {
+public:
   M m_meta;
 };
 
