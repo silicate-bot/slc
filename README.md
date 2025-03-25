@@ -19,6 +19,11 @@ struct ReplayMeta {
 };
 
 slc::Replay<ReplayMeta> replay;
+
+// OR
+
+slc::Replay<void> replay; // For no meta
+
 // Set tps by directly changing the member
 replay.m_tps = 480.0;
 
