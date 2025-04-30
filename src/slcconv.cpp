@@ -114,26 +114,18 @@ struct ReplayMeta {
   char _reserved[56];
 };
 
-int main() {
+void convert(std::string& in, std::string& out) {
   slc::Replay<ReplayMeta> replay;
   OldReplay oldReplay;
+  int oldReplaySize = std::filesystem::file_size(in);
+  OldReplay from = OldReplay::fromFile(in).value();
 
-  std::cout << "Input legacy replay path: ";
-  std::string path;
-  std::getline(std::cin >> std::ws, path);
-
-  if (path.front() == '"' && path.back() == '"') {
-    path = path.substr(1, path.size() - 2);
+  if (in.front() == '"' && in.back() == '"') {
+    in.substr(1, in.size() - 2);
   }
 
-  int oldReplaySize = std::filesystem::file_size(path);
-  OldReplay from = OldReplay::fromFile(path).value();
-
-  std::cout << "Input output path: ";
-  std::getline(std::cin >> std::ws, path);
-
-  if (path.front() == '"' && path.back() == '"') {
-    path = path.substr(1, path.size() - 2);
+  if (out.front() == '"' && out.back() == '"') {
+    out.substr(1, in.size() - 2);
   }
 
   replay.m_tps = from.fps();
@@ -149,20 +141,73 @@ int main() {
 
   auto start = std::chrono::high_resolution_clock::now();
   {
-    std::ofstream file(path, std::ios::binary);
+    std::ofstream file(out, std::ios::binary);
     replay.write(file);
   }
   auto end = std::chrono::high_resolution_clock::now();
-  std::cout << "Converted replay successfully written to: " << path << "\n";
+  std::cout << "Converted replay successfully written to: " << out << "\n";
 
   std::cout << "Conversion took: "
             << std::chrono::duration_cast<std::chrono::milliseconds>(end -
                                                                      start)
                    .count()
             << "ms\n";
-  int newReplaySize = std::filesystem::file_size(path);
+  int newReplaySize = std::filesystem::file_size(out);
   std::println("Replay size: {}b ({}b savings)", newReplaySize,
                oldReplaySize - newReplaySize);
 
-  return 0;
+}
+
+int main() {
+
+    std::cout << "Input legacy replay path: ";
+    std::string path;
+    std::getline(std::cin >> std::ws, path);
+
+    if (path.front() == '"' && path.back() == '"') {
+	path = path.substr(1, path.size() - 2);
+    }
+
+    if (std::filesystem::is_directory(path)) {
+	const std::filesystem::path dir = path;
+
+	std::cout << "Output directory path: ";
+	std::string path;
+	std::getline(std::cin >> std::ws, path);
+
+	if (path.front() == '"' && path.back() == '"') {
+	    path = path.substr(1, path.size() - 2);
+	}
+
+	const std::filesystem::path out = path;
+	std::filesystem::create_directory(out);
+
+	for (const auto& entry : std::filesystem::directory_iterator{dir}) {
+	    if (entry.path().extension() != ".slc") {
+		std::cout << entry.path().filename() << " not an slc1 replay, skipping...\n";
+		continue;
+	    }
+
+	    std::filesystem::path outPath = 
+		std::filesystem::path(out / entry.path().filename());
+
+	    std::string in = entry.path().string();
+	    std::string outs = outPath.string();
+
+	    convert(in, outs);
+	}
+    } else {
+	std::string in = path;
+	std::cout << "Output slc2 replay path: ";
+	std::string path;
+	std::getline(std::cin >> std::ws, path);
+
+	if (path.front() == '"' && path.back() == '"') {
+	    path = path.substr(1, path.size() - 2);
+	}
+	
+	convert(in, path);
+    }
+
+    return 0;
 }

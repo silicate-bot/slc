@@ -5,6 +5,7 @@
 #include <iostream>
 #include <type_traits>
 #include <vector>
+#include <cstring>
 
 namespace slc {
 namespace _util {
@@ -375,7 +376,7 @@ public:
     Self replay;
     char header[4];
     s.read(header, sizeof(header));
-    if (std::memcmp(header, HEADER, sizeof(header)) != 0) {
+    if (memcmp(header, HEADER, sizeof(header)) != 0) {
       return std::unexpected(ReplayError::HeaderMismatchError);
     }
 
@@ -411,7 +412,7 @@ public:
 
     char footer[3];
     s.read(footer, sizeof(footer));
-    if (std::memcmp(footer, FOOTER, sizeof(footer)) != 0) {
+    if (memcmp(footer, FOOTER, sizeof(footer)) != 0) {
       return std::unexpected(ReplayError::FooterMismatchError);
     }
 
