@@ -1,5 +1,11 @@
 # slc replay format
 
+## V3 Documentation
+
+SLC version 3 is currently in the works. It's not usable yet.
+
+## V2 Documentation
+
 A tiny and incredibly fast replay format for storing Geometry Dash replays.
 
 ### Warning!
@@ -9,20 +15,22 @@ This format is not meant to be universal; an `slc` replay from one bot may not w
 ## Example
 
 ```cpp
+#define SLC_NO_DEFAULT
 #include <slc/slc.hpp>
 
-using InputType = slc::Input::InputType;
+namespace sv2 = slc::v2;
+using InputType = sv2::Input::InputType;
 
 // Declare the meta by using a struct
 struct ReplayMeta {
   uint64_t seed;
 };
 
-slc::Replay<ReplayMeta> replay;
+sv2::Replay<ReplayMeta> replay;
 
 // OR
 
-slc::Replay<void> replay; // For no meta
+sv2::Replay<void> replay; // For no meta
 
 // Set tps by directly changing the member
 replay.m_tps = 480.0;
@@ -51,5 +59,3 @@ replay.write(file);
 
 Currently used replay formats are either incredibly slow or incredibly big, or both. Inefficient storage of replay data leads to lack of shareability
 for very large files. Notoriously tiny formats (like `.ybot`) are incredibly slow to parse and write, due to them using variable length integers. The most popular replay format (`.gdr`) uses msgpack or json for serialization, which is incredibly slow and wasteful.
-
-I (peony) strongly discourage the usage of GDR2. It's unattributed derivative work of this format without my permission.

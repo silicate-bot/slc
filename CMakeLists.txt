@@ -14,4 +14,3 @@ add_executable(slcconv
 )
 
 target_link_libraries(slcconv PRIVATE libslc)
-
