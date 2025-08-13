@@ -6,6 +6,7 @@
 #include <cstring>
 #include <expected>
 #include <iostream>
+#include <print>
 #include <type_traits>
 #include <vector>
 
@@ -138,6 +139,8 @@ public:
     b.m_byteSize = util::binRead<uint64_t>(s);
     b.m_start = util::binRead<uint64_t>(s);
     b.m_length = util::binRead<uint64_t>(s);
+    std::println("Blob of size {}, {} - {}", b.m_byteSize, b.m_start,
+                 b.m_start + b.m_length);
 
     return b;
   }

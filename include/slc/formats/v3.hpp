@@ -2,9 +2,13 @@
 #define SLC_FORMATS_V3_HPP
 
 #include "slc/util.hpp"
+#include <bit>
 #include <cassert>
 #include <deque>
 #include <iostream>
+#ifdef SLC_INSPECT
+#include <print>
+#endif
 #include <span>
 #include <stdexcept>
 #include <system_error>
@@ -12,11 +16,15 @@
 
 SLC_NS_BEGIN
 
+#define USE_DELTA_DIFFERENCES 0
+
 namespace v3 {
 
 ///////////////////////////////////////
 //////////// PUBLIC FACING ////////////
 ///////////////////////////////////////
+
+class Replay;
 
 /**
  * Public-facing input type.
@@ -26,10 +34,14 @@ namespace v3 {
 class Action {
 private:
   uint64_t m_delta;
+  bool m_swift = false;
+#if USE_DELTA_DIFFERENCES
+  bool m_difference;
+#endif
 
 public:
   enum class ActionType : uint8_t {
-    Skip = 0,
+    Reserved = 0,
 
     // Player
     Jump = 1,
@@ -53,13 +65,13 @@ public:
   // Additional metadata
 
   /**
-   * Used for Player actions (0-3).
+   * Used for Player actions (1-3).
    * Whether this is a hold or a release.
    */
   bool m_holding = false;
 
   /**
-   * Used for Player actions (0-3).
+   * Used for Player actions (1-3).
    * Whether this is for player 1 or 2.
    */
   bool m_player2 = false;
@@ -76,19 +88,41 @@ public:
    */
   double m_tps = 240.0;
 
-  const uint8_t getMinimumSize() const {
-    const uint64_t ONE_BYTE_THRESHOLD = 1 << 4;
-    const uint64_t TWO_BYTES_THRESHOLD = 1 << 12;
-    const uint64_t FOUR_BYTES_THRESHOLD = 1 << 28;
+#if USE_DELTA_DIFFERENCES
+  inline const bool useDifference() const { return m_difference; }
+#else
+  inline const bool useDifference() const { return false; }
+#endif
+  inline const bool swift() const { return m_swift; }
 
-    if (m_delta < ONE_BYTE_THRESHOLD) {
+  const uint8_t getMinimumSize(uint64_t dd) const {
+#if USE_DELTA_DIFFERENCES
+    uint64_t offset = 3;
+    const uint64_t delta = m_difference ? m_delta : dd;
+    if (static_cast<int>(m_type) >= 4) {
+      offset = 7;
+    }
+#else
+    uint64_t offset = 4;
+    const uint64_t delta = m_delta;
+    // Special
+    if (static_cast<int>(m_type) >= 4) {
+      offset = 8;
+    }
+#endif
+
+    const uint64_t ONE_BYTE_THRESHOLD = 1 << (offset);
+    const uint64_t TWO_BYTES_THRESHOLD = 1 << (offset + 8);
+    const uint64_t FOUR_BYTES_THRESHOLD = 1 << (offset + 24);
+
+    if (delta < ONE_BYTE_THRESHOLD) {
+      return 0;
+    } else if (delta < TWO_BYTES_THRESHOLD) {
       return 1;
-    } else if (m_delta < TWO_BYTES_THRESHOLD) {
+    } else if (delta < FOUR_BYTES_THRESHOLD) {
       return 2;
-    } else if (m_delta < FOUR_BYTES_THRESHOLD) {
-      return 4;
     } else {
-      return 8;
+      return 3;
     }
   }
 
@@ -100,6 +134,18 @@ public:
     m_delta = m_frame - previousFrame;
   }
   inline const uint64_t delta() const { return m_delta; }
+
+  Action() = default;
+  Action(uint64_t currentFrame, uint64_t delta, ActionType button, bool holding,
+         bool p2) {
+    m_frame = currentFrame + delta;
+    m_type = button;
+    m_holding = holding;
+    m_player2 = p2;
+    m_delta = delta;
+  }
+
+  friend Replay;
 };
 
 ///////////////////////////////////////
@@ -109,7 +155,7 @@ public:
 class PlayerInput {
 public:
   enum class Button : uint8_t {
-    Skip = 0,
+    Swift = 0,
     Jump = 1,
     Left = 2,
     Right = 3,
@@ -120,18 +166,35 @@ public:
   Button m_button;
   bool m_holding;
   bool m_player2;
+  bool m_difference;
 
-  static PlayerInput fromAction(const Action &action) {
+  static PlayerInput fromAction(const Action &action, uint64_t dd) {
     assert(action.isPlayer());
 
     PlayerInput p;
     p.m_button = static_cast<Button>(action.m_type);
+    if (action.swift()) {
+      p.m_button = Button::Swift;
+    }
     p.m_frame = action.m_frame;
-    p.m_delta = action.delta();
+    p.m_delta = action.useDifference() ? dd : action.delta();
     p.m_holding = action.m_holding;
     p.m_player2 = action.m_player2;
 
     return p;
+  }
+
+  const uint64_t prepareState(uint8_t byteSize) const {
+    uint64_t byteMask =
+        byteSize == 8 ? -((uint64_t)1) : (1ull << (byteSize * 8ull)) - 1ull;
+#if USE_DELTA_DIFFERENCES
+    return byteMask & ((m_delta << 5) | (m_difference << 4) |
+                       (static_cast<uint8_t>(m_button) << 2) |
+                       (m_player2 << 1) | m_holding);
+#else
+    return byteMask & ((m_delta << 4) | (static_cast<uint8_t>(m_button) << 2) |
+                       (m_player2 << 1) | m_holding);
+#endif
   }
 };
 
@@ -139,19 +202,19 @@ class Section {
 public:
   enum class Identifier : uint8_t {
     /**
-     * XX XX    XXXX
+     * 00 XX    XXXX
      * -- --    ----
      * ID Size Count (2^X)
      */
     Input = 0,
     /**
-     * XX XX   XXXX   XXXX    XXXX
-     * -- --   ----   ----    ----
-     * ID Size Count Repeats Reserved
+     * 01 XX   XXXX   XXXXX   XXX
+     * -- --   ----   -----   ---
+     * ID Size Count  Repeats Reserved
      */
     Repeat,
     /**
-     * XX XXXX XX
+     * 10 XXXX XX
      * -- ---- --
      * ID Type Size
      */
@@ -161,8 +224,6 @@ public:
   enum class SpecialType : uint8_t { Restart = 0, RestartFull, Death, TPS };
 
 private:
-  Identifier m_id;
-
   // Player
   std::vector<PlayerInput> m_playerInputs;
   uint8_t m_countExp;
@@ -176,15 +237,17 @@ private:
 
 protected:
 public:
+  Identifier m_id;
   uint8_t m_deltaSize;
-  bool m_markedForRemoval;
+  bool m_markedForRemoval = false;
 
-  uint64_t getRealDeltaSize() {
+  uint64_t getInputCountDirty() const { return m_playerInputs.size(); }
+  uint64_t getRealDeltaSize() const {
     assert(m_deltaSize <= 3);
 
     return 1ull << (uint64_t)m_deltaSize;
   }
-  uint64_t getInputCount() { return 1ull << (uint64_t)m_countExp; }
+  uint64_t getInputCount() const { return 1ull << (uint64_t)m_countExp; }
   uint64_t getRepeatCount() { return 1ull << (uint64_t)m_repeatsExp; }
   inline const bool isSpecial() const { return m_id == Identifier::Special; }
 
@@ -196,28 +259,15 @@ public:
   }
 
   size_t totalSize() {
-    switch (m_id) {
-    case Identifier::Input: {
-      return getInputCount() * getRealDeltaSize() + 1;
-    }
-    case Identifier::Repeat: {
-      return getInputCount() * getRealDeltaSize() * getRepeatCount() + 2;
-    }
-    case Identifier::Special: {
-      return 1 + 8 + getRealDeltaSize();
-    }
-    }
-
-    return 0; // unreachable
+    return newSizeAssumingDeltaSize(getInputCount(), getRealDeltaSize());
   }
-
-  size_t newSizeAssumingDeltaSize(uint64_t size) {
+  size_t newSizeAssumingDeltaSize(uint64_t count, uint64_t size) {
     switch (m_id) {
     case Identifier::Input: {
-      return getInputCount() * size + 1;
+      return count * size + 1;
     }
     case Identifier::Repeat: {
-      return getInputCount() * size * getRepeatCount() + 2;
+      return count * size * getRepeatCount() + 2;
     }
     case Identifier::Special: {
       return 1 + 8 + size;
@@ -227,19 +277,54 @@ public:
     return 0; // unreachable
   }
 
+  static Section player(const std::span<const Action> actions, size_t start,
+                        size_t end) {
+    Section s;
+
+    s.m_id = Identifier::Input;
+    uint32_t count = 0;
+    uint32_t swifts = 0;
+
+    for (int i = start; i < end; i++) {
+      auto &action = actions[i];
+      if (action.m_holding || !action.swift()) {
+        // #ifdef SLC_INSPECT
+        //         std::println("Processing {}, marked swift {}", i,
+        //         action.swift());
+        // #endif
+
+        s.m_playerInputs.push_back(PlayerInput::fromAction(
+            actions[i], actions[i].delta() - actions[i - 1].delta()));
+        count++;
+      } else {
+        swifts++;
+      }
+    }
+
+    s.m_countExp = util::exponentOfTwo(count);
+
+#ifdef SLC_INSPECT
+    std::println(
+        "Preparing Input section from {} to {}, with count {}, swifts {}",
+        start, end, count, swifts);
+#endif
+
+    return s;
+  }
+
   static Section player(const Action &start) {
     assert(start.isPlayer());
     Section s;
 
     s.m_id = Identifier::Input;
-    s.m_playerInputs = {PlayerInput::fromAction(start)};
+    s.m_playerInputs = {PlayerInput::fromAction(start, 0)};
 
     return s;
   }
 
-  void addPlayerInput(const Action &action) {
-    m_playerInputs.push_back(PlayerInput::fromAction(action));
-  }
+  // void addPlayerInput(const Action &action) {
+  //   m_playerInputs.push_back(PlayerInput::fromAction(action));
+  // }
 
   static Section special(const Action &action) {
     assert(!action.isPlayer());
@@ -271,8 +356,70 @@ public:
     }
 
     s.m_special = action;
+    s.m_deltaSize = action.getMinimumSize(0);
 
     return s;
+  }
+
+  const void write(std::ostream &s) const {
+    if (m_markedForRemoval)
+      return;
+
+    switch (m_id) {
+    case Identifier::Input: {
+#ifdef SLC_INSPECT
+      std::println("Writing Input section: {} count ({} exp), {} delta size",
+                   getInputCount(), m_countExp, m_deltaSize);
+#endif
+      uint8_t header = m_countExp | (m_deltaSize << 4);
+
+      util::binWrite(s, header);
+
+      uint64_t byteSize = getRealDeltaSize();
+
+      for (const auto &input : m_playerInputs) {
+        uint64_t state = input.prepareState(byteSize);
+
+        s.write(
+            reinterpret_cast<const char *>(reinterpret_cast<uintptr_t>(&state)),
+            byteSize);
+      }
+
+      break;
+    }
+    case Identifier::Repeat: {
+      uint16_t header = static_cast<uint16_t>(Identifier::Repeat) << 14 |
+                        m_deltaSize << 12 | m_countExp << 8 | m_repeatsExp << 3;
+
+      util::binWrite(s, header);
+      break;
+    }
+    case Identifier::Special: {
+      uint8_t header = static_cast<uint8_t>(Identifier::Special) << 6 |
+                       static_cast<uint8_t>(m_specialType) << 2 | m_deltaSize;
+
+      util::binWrite(s, header);
+
+      uint64_t delta = m_special.delta();
+
+      s.write(
+          reinterpret_cast<const char *>(reinterpret_cast<uintptr_t>(&delta)),
+          getRealDeltaSize());
+
+      switch (m_specialType) {
+      case SpecialType::Restart:
+      case SpecialType::RestartFull:
+      case SpecialType::Death:
+        util::binWrite(s, m_seed);
+        break;
+      case SpecialType::TPS:
+        util::binWrite(s, m_tps);
+        break;
+      }
+
+      break;
+    }
+    }
   }
 };
 
@@ -292,47 +439,78 @@ static_assert(sizeof(Metadata) == METADATA_SIZE);
 class Replay {
 private:
   Metadata m_meta;
-  std::deque<Action> m_actions;
+
+public:
+  std::vector<Action> m_actions;
 
 private:
   // "literally slc2"
-  void prepareSections(std::vector<Section> &sections) const {
-    for (const auto &action : m_actions) {
-      const uint8_t size = action.getMinimumSize();
-      if (!action.isPlayer()) {
-        sections.push_back(Section::special(action));
-        return;
-      }
-
-      if (sections.empty() || sections.back().isSpecial()) {
-        sections.push_back(Section::player(action));
+  void prepareSections(std::vector<Section> &sections) {
+    int i = 0;
+    while (i < m_actions.size()) {
+      if (!m_actions[i].isPlayer()) {
+        sections.push_back(Section::special(m_actions[i]));
         continue;
       }
 
-      auto &previous = sections.back();
-      if (previous.m_deltaSize != action.getMinimumSize()) {
-        sections.push_back(Section::player(action));
-      } else {
-        previous.addPlayerInput(action);
+      uint64_t dd = 0;
+      uint32_t count = 1;
+      uint32_t pureCount = 1;
+      uint32_t swifts = 0;
+      uint32_t pureSwifts = 0;
+      size_t start = i;
+#if USE_DELTA_DIFFERENCES
+      if (i > 1 && m_actions[i].delta() >= m_actions[i - 1].delta() &&
+          m_actions[i].delta() - m_actions[i - 1].delta() <
+              m_actions[i].delta()) {
+        m_actions[i].m_difference = true;
+        dd = m_actions[i].delta() - m_actions[i - 1].delta();
       }
-    }
-  }
+#endif
 
-  // Optimization passes
-  void contractSections(std::vector<Section> &sections) const {
-    for (int i = sections.size() - 1; i > 0; i++) {
-      auto &section = sections[i];
-      auto &previous = sections[i - 1];
+      uint8_t minSize = m_actions[i].getMinimumSize(dd);
 
-      size_t currentSize = section.totalSize() - sizeof(Section);
-      bool isTiny = currentSize < sizeof(Section);
+      while (i < m_actions.size() && pureCount < (1 << 16) &&
+             m_actions[i].isPlayer() &&
+             m_actions[i].getMinimumSize(dd) == minSize) {
+        i++;
+        count++;
 
-      if (isTiny) {
-        if (section.m_deltaSize > previous.m_deltaSize &&
-            section.newSizeAssumingDeltaSize(previous.m_deltaSize) <
-                sizeof(Section)) {
+        if (m_actions[i].delta() == 0 && !m_actions[i].m_holding &&
+            m_actions[i - 1].m_holding != m_actions[i].m_holding &&
+            m_actions[i - 1].m_player2 == m_actions[i].m_player2 &&
+            m_actions[i - 1].m_type == m_actions[i].m_type) {
+          m_actions[i - 1].m_swift = true;
+          m_actions[i].m_swift = true;
+          swifts++;
+
+        } else {
+          pureCount++;
+        }
+
+#if USE_DELTA_DIFFERENCES
+        if (i > 1 && m_actions[i].delta() >= m_actions[i - 1].delta() &&
+            m_actions[i].delta() - m_actions[i - 1].delta() <
+                m_actions[i].delta()) {
+          m_actions[i].m_difference = true;
+          dd = m_actions[i].delta() - m_actions[i - 1].delta();
+        }
+#endif
+
+        if (util::largestPowerOfTwo(pureCount) == pureCount) {
+          pureSwifts = swifts;
         }
       }
+
+      count--;
+
+      count = util::largestPowerOfTwo(pureCount);
+      i = start + count + pureSwifts;
+
+      Section s = Section::player(m_actions, start, i);
+      s.m_deltaSize = minSize;
+
+      sections.push_back(s);
     }
   }
 
@@ -340,7 +518,7 @@ public:
   static constexpr size_t HEADER_SIZE = 4;
   static constexpr char HEADER[HEADER_SIZE] = {'S', 'L', 'C', '3'};
 
-  void write(std::ostream &out) const {
+  void write(std::ostream &out) {
     out.write(HEADER, HEADER_SIZE);
 
     uint64_t metaSize = sizeof(Metadata);
@@ -355,10 +533,12 @@ public:
     sections.reserve(
         actionCount); // worst case scenario; no optimizations will be applied
 
-    prepareSections(sections);  // Necessary for the replay to save; organizes
-                                // actions into sections
-    contractSections(sections); // Contracts similar-sized sections to optimize
-                                // for byte size, removes unnecessary sections
+    prepareSections(sections); // Necessary for the replay to save; organizes
+                               // actions into sections
+
+    for (auto &section : sections) {
+      section.write(out);
+    }
   }
 };
 
