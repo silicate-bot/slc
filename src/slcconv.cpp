@@ -37,6 +37,8 @@ int main() {
     std::println("------------------------------------");
 
     slc::v3::Replay<> r;
+
+    r.m_meta.m_tps = oldrep->m_tps;
     slc::v3::ActionAtom a;
 
     using ActionType = slc::v3::Action::ActionType;

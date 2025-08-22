@@ -29,11 +29,10 @@ using DefaultRegistry = AtomRegistry<NullAtom, ActionAtom>;
 
 template <typename Registry = DefaultRegistry> class Replay {
 private:
-  Metadata m_meta;
-
   using Self = Replay;
 
 public:
+  Metadata m_meta;
   Registry m_atoms;
 
 private:
