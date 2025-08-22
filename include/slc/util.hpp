@@ -3,6 +3,7 @@
 
 #include <bit>
 #include <iostream>
+#include <span>
 
 #define SLC_NS_BEGIN namespace slc {
 #define SLC_NS_END }

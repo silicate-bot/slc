@@ -2,7 +2,26 @@
 
 ## V3 Documentation
 
-SLC version 3 is currently in the works. It's not usable yet.
+A tiny, fast and extensible replay format, primarly used for Geometry Dash replays.
+
+> This documentation is incomplete yet. I recommend not using slc3 until the API gets fully stabilized.
+
+### Note on universality
+
+Unlike slc version 2, slc version 3 is designed to be incredibly modular and extensible. Assuming you (or the developer of the tool you're using) use(s) builtin atoms for what they're designed to do, this format can prove to be useful in a cross-bot setting as well.
+
+## Example
+```cpp
+#include <slc/slc.hpp>
+
+// Notice how we don't define the replay yet; at this point in time we're just defining the actions in the replay
+// This is assuming the tickrate is stored somewhere and the slc3 replay is not the single source of truth for metadata (it shouldn't be)
+
+// It's safe to use an atom as a single source of truth though, which is what we do for actions
+slc::ActionAtom actions;
+
+// TODO: do the rest
+```
 
 ## V2 Documentation
 
