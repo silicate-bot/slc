@@ -4,3 +4,4 @@ build/
 .cache/
 *.bat
 *.slc
+.direnv
