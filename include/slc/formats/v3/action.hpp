@@ -16,9 +16,6 @@ namespace v3 {
 class Action {
 private:
   uint64_t m_delta;
-#if USE_DELTA_DIFFERENCES
-  bool m_difference;
-#endif
 
 public:
   enum class ActionType : uint8_t {
@@ -75,28 +72,15 @@ public:
    */
   bool m_swift = false;
 
-#if USE_DELTA_DIFFERENCES
-  inline const bool useDifference() const { return m_difference; }
-#else
-  inline const bool useDifference() const { return false; }
-#endif
   inline const bool swift() const { return m_swift; }
 
-  const uint8_t getMinimumSize(uint64_t dd) const {
-#if USE_DELTA_DIFFERENCES
-    uint64_t offset = 3;
-    const uint64_t delta = m_difference ? m_delta : dd;
-    if (static_cast<int>(m_type) >= 4) {
-      offset = 7;
-    }
-#else
+  const uint8_t getMinimumSize() const {
     uint64_t offset = 4ull;
     const uint64_t delta = m_delta;
     // Special
     if (static_cast<int>(m_type) >= 4) {
       offset = 8;
     }
-#endif
 
     const uint64_t ONE_BYTE_THRESHOLD = 1ull << (offset);
     const uint64_t TWO_BYTES_THRESHOLD = 1ull << (offset + 8ull);

@@ -11,6 +11,7 @@
 SLC_NS_BEGIN
 
 namespace util {
+
 template <typename T, T Left, T Right>
   requires std::totally_ordered<T>
 constexpr bool inRange(T value) {

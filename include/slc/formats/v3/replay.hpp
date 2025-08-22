@@ -1,7 +1,6 @@
 #ifndef _SLC_V3_REPLAY_HPP
 #define _SLC_V3_REPLAY_HPP
 
-#include "slc/formats/v3/action.hpp"
 #include "slc/formats/v3/atom.hpp"
 #include "slc/formats/v3/error.hpp"
 #include "slc/formats/v3/metadata.hpp"

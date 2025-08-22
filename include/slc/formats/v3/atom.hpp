@@ -168,12 +168,8 @@ public:
     end -= 1; // subtract one for footer length
 
     while (in.tellg() < end) {
-      auto result = Serializer::read(in);
-      if (result.has_value()) {
-        this->add(result.value());
-      } else {
-        return std::unexpected(result.error());
-      }
+      auto result = TRY(Serializer::read(in));
+      this->add(result);
     }
 
     return {};

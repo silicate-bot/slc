@@ -38,7 +38,7 @@ public:
       p.m_button = Button::Swift;
     }
     p.m_frame = action.m_frame;
-    p.m_delta = action.useDifference() ? dd : action.delta();
+    p.m_delta = action.delta();
     p.m_holding = action.m_holding;
     p.m_player2 = action.m_player2;
 
@@ -63,14 +63,8 @@ public:
   const uint64_t prepareState(uint8_t byteSize) const {
     uint64_t byteMask =
         byteSize == 8 ? -((uint64_t)1) : (1ull << (byteSize * 8ull)) - 1ull;
-#if USE_DELTA_DIFFERENCES
-    return byteMask & ((m_delta << 5) | (m_difference << 4) |
-                       (static_cast<uint8_t>(m_button) << 2) |
-                       (m_player2 << 1) | m_holding);
-#else
     return byteMask & ((m_delta << 4) | (static_cast<uint8_t>(m_button) << 2) |
                        (m_player2 << 1) | m_holding);
-#endif
   }
 };
 
@@ -203,7 +197,7 @@ public:
   //   m_playerInputs.push_back(PlayerInput::fromAction(action));
   // }
 
-  static Section special(const Action &action) {
+  static Result<Section> special(const Action &action) {
     assert(!action.isPlayer());
     Section s;
 
@@ -228,12 +222,12 @@ public:
       break;
     }
     default:
-      throw std::runtime_error("Invalid action to create a special section - "
-                               "somehow got past assertion");
+      return std::unexpected("Invalid action to create a special section - "
+                             "somehow got past assertion");
     }
 
     s.m_special = action;
-    s.m_deltaSize = action.getMinimumSize(0);
+    s.m_deltaSize = action.getMinimumSize();
 
     return s;
   }
@@ -386,58 +380,57 @@ struct ActionAtom {
 
   std::vector<Action> m_actions;
 
+  static inline bool swiftCompatible(std::vector<Action> &actions, size_t i) {
+    assert(i < actions.size());
+
+    return actions[i].delta() == 0 && !actions[i].m_holding &&
+           actions[i - 1].m_holding != actions[i].m_holding &&
+           actions[i - 1].m_player2 == actions[i].m_player2 &&
+           actions[i - 1].m_type == actions[i].m_type &&
+           actions[i].m_type == Action::ActionType::Jump;
+  }
+
+  static inline bool canJoin(std::vector<Action> &actions, size_t count,
+                             size_t i) {
+    static constexpr size_t MAX_SECTION_ACTIONS = 1 << 16;
+
+    return i < (actions.size() - 1) && count < MAX_SECTION_ACTIONS &&
+           actions[i + 1].isPlayer() &&
+           actions[i + 1].getMinimumSize() == actions[i].getMinimumSize();
+  }
+
   // "literally slc2"
-  static void prepareSections(std::vector<Action> &actions,
-                              std::vector<Section> &sections) {
-    int i = 0;
+  static Result<> prepareSections(std::vector<Action> &actions,
+                                  std::vector<Section> &sections) {
+    size_t i = 0;
     while (i < actions.size()) {
       if (!actions[i].isPlayer()) {
-        sections.push_back(Section::special(actions[i]));
+        auto section = TRY(Section::special(actions[i]));
+
+        sections.push_back(section);
+
         continue;
       }
 
-      uint64_t dd = 0;
       uint32_t count = 1;
       uint32_t pureCount = 1;
       uint32_t swifts = 0;
       uint32_t pureSwifts = 0;
       size_t start = i;
-#if USE_DELTA_DIFFERENCES
-      if (i > 1 && actions[i].delta() >= actions[i - 1].delta() &&
-          actions[i].delta() - actions[i - 1].delta() < actions[i].delta()) {
-        actions[i].m_difference = true;
-        dd = actions[i].delta() - actions[i - 1].delta();
-      }
-#endif
 
-      uint8_t minSize = actions[i].getMinimumSize(dd);
+      uint8_t minSize = actions[i].getMinimumSize();
 
-      while (i < (actions.size() - 1) && pureCount < (1 << 16) &&
-             actions[i + 1].isPlayer() &&
-             actions[i + 1].getMinimumSize(dd) == minSize) {
+      while (canJoin(actions, pureCount, i)) {
         i++;
         count++;
 
-        if (actions[i].delta() == 0 && !actions[i].m_holding &&
-            actions[i - 1].m_holding != actions[i].m_holding &&
-            actions[i - 1].m_player2 == actions[i].m_player2 &&
-            actions[i - 1].m_type == actions[i].m_type &&
-            actions[i].m_type == Action::ActionType::Jump) {
+        if (swiftCompatible(actions, i)) {
           actions[i - 1].m_swift = true;
           actions[i].m_swift = true;
           swifts++;
-
         } else {
           pureCount++;
         }
-
-#if USE_DELTA_DIFFERENCES
-        if (i > 1 && actions[i].delta() >= actions[i - 1].delta() &&
-            actions[i].delta() - actions[i - 1].delta() < actions[i].delta()) {
-          actions[i].m_difference = true;
-          dd = actions[i].delta() - actions[i - 1].delta();
-        }
-#endif
 
         if (util::largestPowerOfTwo(pureCount) == pureCount) {
           pureSwifts = swifts;
@@ -454,6 +447,8 @@ struct ActionAtom {
 
       sections.push_back(s);
     }
+
+    return {};
   }
 
   static Result<ActionAtom> read(std::istream &in, size_t size) {
@@ -475,7 +470,7 @@ struct ActionAtom {
 
     std::vector<Section> sections;
 
-    ActionAtom::prepareSections(m_actions, sections);
+    TRY(ActionAtom::prepareSections(m_actions, sections));
 
     for (auto &section : sections) {
       section.write(out);

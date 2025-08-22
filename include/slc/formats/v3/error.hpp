@@ -10,6 +10,14 @@ SLC_NS_BEGIN
 
 namespace v3 {
 
+#define TRY(failable)                                                          \
+  ({                                                                           \
+    auto result = (failable);                                                  \
+    if (!result)                                                               \
+      return std::unexpected{result.error()};                                  \
+    *result;                                                                   \
+  })
+
 struct Error {
   // Concise error description.
   std::string m_message;
