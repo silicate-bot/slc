@@ -16,7 +16,7 @@ SLC_NS_BEGIN
 
 namespace v3 {
 
-enum class AtomId : int {
+enum class AtomId : uint32_t {
   Null = 0,
   Action = 1,
   Marker = 2,
@@ -97,7 +97,7 @@ template <IsAtom... Ts> struct AtomSerializer {
 
   static Result<Variant> read(std::istream &in) {
     AtomIdT id = util::binRead<AtomIdT>(in);
-    size_t size = util::binRead<size_t>(in);
+    size_t size = util::binRead<uint64_t>(in);
 
     return Self::read(in, static_cast<AtomId>(id), size);
   }
@@ -107,19 +107,29 @@ template <IsAtom... Ts> struct AtomSerializer {
         [&](auto &atom) -> Result<> {
           util::binWrite(out, atom.id);
 
-          size_t before = out.tellp();
-          util::binWrite(out, 0zu);
+          auto before = out.tellp();
+          if (before == -1) {
+            return std::unexpected("failed to query before position");
+          }
 
-          size_t start = out.tellp();
+          util::binWrite(out, 0ull);
+
+          auto start = out.tellp();
+          if (start == -1) {
+            return std::unexpected("failed to query start position");
+          }
           atom.write(out);
 
-          size_t end = out.tellp();
+          auto end = out.tellp();
+          if (end == -1) {
+            return std::unexpected("failed to query end position");
+          }
 
           atom.size = end - start;
 
           out.seekp(before, std::ios::beg);
 
-          util::binWrite(out, atom.size);
+          util::binWrite<uint64_t>(out, atom.size);
           out.seekp(end, std::ios::beg);
 
           return {};
@@ -143,15 +153,21 @@ public:
   const size_t count() const { return m_atoms.size(); }
 
   Result<> readAll(std::istream &in) {
-    size_t pos = in.tellg();
+    auto pos = in.tellg();
+    if (pos == -1) {
+      return std::unexpected("failed to query position");
+    }
 
     in.seekg(0, std::ios::end);
-    size_t end = in.tellg();
+    auto end = in.tellg();
+    if (end == -1) {
+      return std::unexpected("failed to query end position");
+    }
 
     in.seekg(pos, std::ios::beg);
     end -= 1; // subtract one for footer length
 
-    while (in.tellg() != end) {
+    while (in.tellg() < end) {
       auto result = Serializer::read(in);
       if (result.has_value()) {
         this->add(result.value());

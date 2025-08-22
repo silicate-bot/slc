@@ -89,7 +89,7 @@ public:
       offset = 7;
     }
 #else
-    uint64_t offset = 4;
+    uint64_t offset = 4ull;
     const uint64_t delta = m_delta;
     // Special
     if (static_cast<int>(m_type) >= 4) {
@@ -97,9 +97,9 @@ public:
     }
 #endif
 
-    const uint64_t ONE_BYTE_THRESHOLD = 1 << (offset);
-    const uint64_t TWO_BYTES_THRESHOLD = 1 << (offset + 8);
-    const uint64_t FOUR_BYTES_THRESHOLD = 1 << (offset + 24);
+    const uint64_t ONE_BYTE_THRESHOLD = 1ull << (offset);
+    const uint64_t TWO_BYTES_THRESHOLD = 1ull << (offset + 8ull);
+    const uint64_t FOUR_BYTES_THRESHOLD = 1ull << (offset + 24ull);
 
     if (delta < ONE_BYTE_THRESHOLD) {
       return 0;

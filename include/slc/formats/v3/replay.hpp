@@ -38,7 +38,7 @@ public:
 
 private:
 public:
-  static constexpr size_t HEADER_SIZE = 8;
+  static constexpr uint64_t HEADER_SIZE = 8;
   static constexpr std::array<uint8_t, HEADER_SIZE> HEADER = {
       'S', 'L', 'C', '3', 'R', 'P', 'L', 'Y'};
 
