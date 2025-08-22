@@ -278,6 +278,39 @@ public:
 
       break;
     };
+    case Identifier::Special: {
+      uint8_t deltaSize = initialHeader & 0b11;
+      SpecialType specialType =
+          static_cast<SpecialType>((initialHeader << 2) & 0b1111);
+
+      uint64_t frameDelta;
+      s.read(reinterpret_cast<char *>(&frameDelta), 1 << deltaSize);
+
+      uint64_t currentFrame = 0;
+      if (actions.size() > 0) {
+        currentFrame = actions.back().m_frame;
+      }
+
+      switch (specialType) {
+      case SpecialType::TPS: {
+        double tps = util::binRead<double>(s);
+        actions.push_back(Action(currentFrame, frameDelta, tps));
+        break;
+      }
+      case SpecialType::Restart:
+      case SpecialType::RestartFull:
+      case SpecialType::Death: {
+        uint64_t seed = util::binRead<uint64_t>(s);
+
+        actions.push_back(Action(
+            currentFrame, frameDelta,
+            static_cast<Action::ActionType>(static_cast<int>(specialType) + 4),
+            seed));
+      }
+      }
+
+      break;
+    };
     default: {
       break;
     }

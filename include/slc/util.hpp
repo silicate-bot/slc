@@ -11,6 +11,14 @@
 SLC_NS_BEGIN
 
 namespace util {
+template <typename T, T Left, T Right>
+  requires std::totally_ordered<T>
+constexpr bool inRange(T value) {
+  static_assert(Left <= Right, "Lhs must be lesser or equal to Rhs");
+
+  return value >= Left && value <= Right;
+}
+
 template <typename T> T binRead(std::istream &s) {
   T temp;
 

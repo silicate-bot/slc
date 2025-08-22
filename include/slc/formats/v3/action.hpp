@@ -2,6 +2,7 @@
 #define _SLC_V3_ACTION_HPP
 
 #include "slc/util.hpp"
+#include <cassert>
 
 SLC_NS_BEGIN
 
@@ -129,6 +130,25 @@ public:
     m_holding = holding;
     m_player2 = p2;
     m_delta = delta;
+  }
+
+  Action(uint64_t currentFrame, uint64_t delta, ActionType button,
+         uint64_t seed) {
+    bool good =
+        util::inRange<ActionType, ActionType::Restart, ActionType::Death>(
+            button);
+    assert(good);
+
+    m_frame = currentFrame + delta;
+    m_delta = delta;
+    m_type = button;
+    m_seed = seed;
+  }
+  Action(uint64_t currentFrame, uint64_t delta, double tps) {
+    m_frame = currentFrame + delta;
+    m_delta = delta;
+    m_type = ActionType::TPS;
+    m_tps = tps;
   }
 };
 
