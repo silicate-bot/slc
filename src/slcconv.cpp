@@ -1,7 +1,6 @@
 #include <filesystem>
 #include <fstream>
 #define SLC_NO_DEFAULT
-#define SLC_INSPECT
 #include <slc/slc.hpp>
 
 struct OldMeta {
@@ -35,11 +34,14 @@ int main() {
 
     uint64_t currentFrame = 0;
     for (const auto &input : oldrep->getInputs()) {
+      if (input.m_button == slc::v2::Input::InputType::Skip) {
+        currentFrame = input.m_frame;
+        continue;
+      }
       a.m_actions.push_back(
           slc::v3::Action(currentFrame, input.m_frame - currentFrame,
                           static_cast<ActionType>(input.m_button),
                           input.m_holding, input.m_player2));
-
       currentFrame = input.m_frame;
     }
 
@@ -49,7 +51,10 @@ int main() {
     const fs::path out_path = fs::current_path() / "out.slc";
     {
       std::ofstream fd("out.slc", std::ios::binary);
-      r.write(fd);
+      if (auto result = r.write(fd); !result.has_value()) {
+        std::println("failed to write: {}", result.error().m_message);
+        return 1;
+      }
     }
 
     size_t newSize = fs::file_size(out_path);
@@ -71,8 +76,40 @@ int main() {
             [](slc::v3::NullAtom &atom) {
               std::println("null atom with size {}", atom.size);
             },
-            [](slc::v3::ActionAtom &atom) {
+            [&](slc::v3::ActionAtom &atom) {
               std::println("action atom with {} inputs", atom.m_actions.size());
+              std::println("checking correctness...");
+
+              int fails = 0;
+
+              for (size_t i = 0; i < atom.m_actions.size(); i++) {
+                const auto &na = atom.m_actions[i];
+                const auto &oa = oldrep->getInputs()[i];
+
+                if (i < 0)
+                  std::println("COMPARING ACTIONS: {} / {}, {} ({}) / {} ({}), "
+                               "{} / {}, SWIFT : {}",
+                               static_cast<int>(na.m_type),
+                               static_cast<int>(oa.m_button), na.m_frame,
+                               na.delta(), oa.m_frame, oa.m_delta, na.m_holding,
+                               oa.m_holding, na.swift());
+
+                if (na.m_frame != oa.m_frame) {
+                  std::println("FRAME MISMATCH: got {}, expected {}",
+                               na.m_frame, oa.m_frame);
+                  return;
+                }
+
+                if (static_cast<int>(na.m_type) !=
+                        static_cast<int>(oa.m_button) ||
+                    na.m_holding != oa.m_holding ||
+                    na.m_player2 != oa.m_player2) {
+                  std::println("ACTION MISMATCH at frame {}", na.m_frame);
+                  return;
+                }
+              }
+
+              std::println("replay perfectly converted with 100% parity");
             }};
 
         for (auto &atom : final.m_atoms.m_atoms) {

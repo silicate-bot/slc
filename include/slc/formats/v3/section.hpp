@@ -6,6 +6,7 @@
 #include "slc/util.hpp"
 
 #include <cassert>
+#include <print>
 #include <vector>
 
 SLC_NS_BEGIN
@@ -40,6 +41,21 @@ public:
     p.m_delta = action.useDifference() ? dd : action.delta();
     p.m_holding = action.m_holding;
     p.m_player2 = action.m_player2;
+
+    return p;
+  }
+
+  static PlayerInput fromState(uint64_t prevFrame, uint64_t state) {
+    PlayerInput p;
+    p.m_delta = state >> 4;
+    p.m_frame = prevFrame + p.m_delta;
+
+    uint8_t button = (state >> 2) & 0b11;
+    assert(button <= 3);
+
+    p.m_button = static_cast<Button>(button);
+    p.m_holding = (state & 0b1) == 0b1;
+    p.m_player2 = (state & 0b10) == 0b10;
 
     return p;
   }
@@ -85,7 +101,6 @@ public:
 
 private:
   // Player
-  std::vector<PlayerInput> m_playerInputs;
   uint8_t m_countExp;
   uint8_t m_repeatsExp;
 
@@ -99,6 +114,7 @@ protected:
 public:
   Identifier m_id;
   uint8_t m_deltaSize;
+  std::vector<PlayerInput> m_playerInputs;
   bool m_markedForRemoval = false;
 
   uint64_t getInputCountDirty() const { return m_playerInputs.size(); }
@@ -222,6 +238,52 @@ public:
     return s;
   }
 
+  static void read(std::istream &s, std::vector<Action> &actions) {
+    uint8_t initialHeader = util::binRead<uint8_t>(s);
+
+    Identifier id = static_cast<Identifier>(initialHeader >> 6);
+    switch (id) {
+    case Identifier::Input: {
+      uint8_t deltaSize = (initialHeader >> 4) & 0b11;
+      uint8_t countExp = initialHeader & 0b1111;
+
+      uint64_t byteSize = 1ull << (uint64_t)deltaSize;
+      uint64_t length = 1ull << (uint64_t)countExp;
+
+      for (uint64_t i = 0; i < length; i++) {
+        uint64_t state = 0;
+        s.read(reinterpret_cast<char *>(&state), byteSize);
+
+        uint64_t previousFrame = 0;
+        if (actions.size() > 0) {
+          previousFrame = actions.back().m_frame;
+        }
+
+        PlayerInput p = PlayerInput::fromState(previousFrame, state);
+
+        if (p.m_button == PlayerInput::Button::Swift) {
+          actions.push_back(Action(previousFrame, p.m_delta,
+                                   Action::ActionType::Jump, true,
+                                   p.m_player2));
+          actions.back().m_swift = true;
+          actions.push_back(Action(p.m_frame, 0, Action::ActionType::Jump,
+                                   false, p.m_player2));
+          actions.back().m_swift = true;
+        } else {
+          actions.push_back(Action(previousFrame, p.m_delta,
+                                   static_cast<Action::ActionType>(p.m_button),
+                                   p.m_holding, p.m_player2));
+        }
+      }
+
+      break;
+    };
+    default: {
+      break;
+    }
+    }
+  }
+
   const void write(std::ostream &s) const {
     if (m_markedForRemoval)
       return;
@@ -239,6 +301,7 @@ public:
       uint64_t byteSize = getRealDeltaSize();
 
       for (const auto &input : m_playerInputs) {
+
         uint64_t state = input.prepareState(byteSize);
 
         s.write(
@@ -316,9 +379,9 @@ struct ActionAtom {
 
       uint8_t minSize = actions[i].getMinimumSize(dd);
 
-      while (i < actions.size() && pureCount < (1 << 16) &&
-             actions[i].isPlayer() &&
-             actions[i].getMinimumSize(dd) == minSize) {
+      while (i < (actions.size() - 1) && pureCount < (1 << 16) &&
+             actions[i + 1].isPlayer() &&
+             actions[i + 1].getMinimumSize(dd) == minSize) {
         i++;
         count++;
 
@@ -363,10 +426,12 @@ struct ActionAtom {
     ActionAtom a;
     a.size = size;
 
-    a.m_actions.resize(util::binRead<size_t>(in));
+    size_t count = util::binRead<size_t>(in);
+    a.m_actions.reserve(count);
 
-    // skip reading for now
-    in.seekg(size - 8, std::ios::cur);
+    while (a.m_actions.size() < count) {
+      Section::read(in, a.m_actions);
+    }
 
     return a;
   }
@@ -383,6 +448,18 @@ struct ActionAtom {
     }
 
     return {};
+  }
+
+  void addAction(uint64_t frame, Action::ActionType actionType, bool holding,
+                 bool p2) {
+    uint64_t previousFrame = 0;
+    if (m_actions.size() > 0) {
+      previousFrame = m_actions.back().m_frame;
+    }
+
+    uint64_t delta = frame - previousFrame;
+
+    m_actions.push_back(Action(previousFrame, delta, actionType, holding, p2));
   }
 };
 

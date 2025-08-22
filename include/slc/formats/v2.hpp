@@ -75,12 +75,15 @@ public:
   // Whether the input is a hold or release.
   bool m_holding = false;
 
+  uint64_t m_delta = 0;
+
   Input() : m_state(0) {}
   Input(uint64_t currentFrame, uint64_t delta, InputType type, bool p2,
         bool hold) {
     m_state =
         (delta << 5) | (static_cast<uint8_t>(type) << 2) | (p2 << 1) | hold;
 
+    m_delta = delta;
     m_frame = currentFrame + delta;
     m_player2 = p2;
     m_button = type;
@@ -90,6 +93,7 @@ public:
   Input(uint64_t currentFrame, uint64_t delta, float tps) {
     m_state = (delta << 5) | (static_cast<uint8_t>(InputType::TPS) << 2);
 
+    m_delta = delta;
     m_frame = currentFrame + delta;
     m_tps = tps;
     m_button = InputType::TPS;
@@ -111,6 +115,7 @@ public:
   }
 
   void updateHelpers(uint64_t currentFrame) {
+    m_delta = m_state >> 5;
     m_frame = currentFrame + (m_state >> 5);
     m_player2 = (m_state & 2) >> 1;
     m_button = static_cast<InputType>((m_state & 0b11100) >> 2);
