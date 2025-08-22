@@ -12,8 +12,9 @@ struct OldMeta {
 namespace fs = std::filesystem;
 
 // https://en.cppreference.com/w/cpp/utility/variant/visit
-template<class... Ts>
-struct overloads : Ts... { using Ts::operator()...; };
+template <class... Ts> struct overloads : Ts... {
+  using Ts::operator()...;
+};
 
 int main() {
   const fs::path in_path = fs::current_path() / "in.slc";
@@ -53,29 +54,33 @@ int main() {
 
     size_t newSize = fs::file_size(out_path);
 
-    std::println("OLD: {}b, NEW: {}b ({:.2f}\% savings)", oldSize, newSize, (1.0 - (double)newSize / (double)oldSize)*100.0);
+    std::println("OLD: {}b, NEW: {}b ({:.2f}\% savings)", oldSize, newSize,
+                 (1.0 - (double)newSize / (double)oldSize) * 100.0);
 
     std::println("------------------------------------");
 
     // verify correctness
     {
-	std::ifstream fd(out_path, std::ios::binary);
-	auto res = slc::v3::Replay<>::read(fd);
-	if (res.has_value()) {
-	    auto final = res.value();
-	    std::println("read slc3 replay with {} atom(s)", final.m_atoms.count());
+      std::ifstream fd(out_path, std::ios::binary);
+      auto res = slc::v3::Replay<>::read(fd);
+      if (res.has_value()) {
+        auto final = res.value();
+        std::println("read slc3 replay with {} atom(s)", final.m_atoms.count());
 
-	    const auto visitor = overloads {
-		[](slc::v3::NullAtom& atom){ std::println("null atom with size {}", atom.size); },
-		[](slc::v3::ActionAtom& atom){ std::println("action atom with {} inputs", atom.m_actions.size()); }
-	    };
+        const auto visitor = overloads{
+            [](slc::v3::NullAtom &atom) {
+              std::println("null atom with size {}", atom.size);
+            },
+            [](slc::v3::ActionAtom &atom) {
+              std::println("action atom with {} inputs", atom.m_actions.size());
+            }};
 
-	    for (auto& atom : final.m_atoms.m_atoms) {
-		std::visit(visitor, atom);
-	    }
-	} else {
-	    std::println("re-reading failed with {}", res.error().m_message);
-	}
+        for (auto &atom : final.m_atoms.m_atoms) {
+          std::visit(visitor, atom);
+        }
+      } else {
+        std::println("re-reading failed with {}", res.error().m_message);
+      }
     }
   } else {
     std::println("exited with {}", static_cast<int>(oldrep.error()));

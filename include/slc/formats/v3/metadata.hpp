@@ -3,8 +3,8 @@
 
 #include "slc/util.hpp"
 
-#include <string>
 #include <expected>
+#include <string>
 
 SLC_NS_BEGIN
 
@@ -23,7 +23,7 @@ struct Metadata {
 };
 static_assert(sizeof(Metadata) == METADATA_SIZE);
 
-}
+} // namespace v3
 
 SLC_NS_END
 

@@ -7,7 +7,6 @@ SLC_NS_BEGIN
 
 namespace v3 {
 
-
 /**
  * Public-facing input type.
  *
@@ -133,7 +132,7 @@ public:
   }
 };
 
-}
+} // namespace v3
 
 SLC_NS_END
 

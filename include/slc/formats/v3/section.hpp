@@ -1,12 +1,12 @@
 #ifndef _SLC_V3_SECTION_HPP
 #define _SLC_V3_SECTION_HPP
 
-#include "slc/util.hpp"
 #include "slc/formats/v3/action.hpp"
 #include "slc/formats/v3/atom.hpp"
+#include "slc/util.hpp"
 
-#include <vector>
 #include <cassert>
+#include <vector>
 
 SLC_NS_BEGIN
 
@@ -57,7 +57,6 @@ public:
 #endif
   }
 };
-
 
 class Section {
 public:
@@ -149,10 +148,11 @@ public:
     for (int i = start; i < end; i++) {
       auto &action = actions[i];
       if (action.m_holding || !action.swift()) {
-        #ifdef SLC_INSPECT
-                std::println("Processing {} button {} delta {}, marked swift {}", i, static_cast<int>(action.m_type), action.delta(),
-                action.swift());
-        #endif
+#ifdef SLC_INSPECT
+        std::println("Processing {} button {} delta {}, marked swift {}", i,
+                     static_cast<int>(action.m_type), action.delta(),
+                     action.swift());
+#endif
 
         s.m_playerInputs.push_back(PlayerInput::fromAction(
             actions[i], actions[i].delta() - actions[i - 1].delta()));
@@ -285,13 +285,14 @@ public:
 };
 
 struct ActionAtom {
-    static inline constexpr AtomId id = AtomId::Action;
-    size_t size;
+  static inline constexpr AtomId id = AtomId::Action;
+  size_t size;
 
-    std::vector<Action> m_actions;
+  std::vector<Action> m_actions;
 
   // "literally slc2"
-  static void prepareSections(std::vector<Action>& actions, std::vector<Section> &sections) {
+  static void prepareSections(std::vector<Action> &actions,
+                              std::vector<Section> &sections) {
     int i = 0;
     while (i < actions.size()) {
       if (!actions[i].isPlayer()) {
@@ -307,8 +308,7 @@ struct ActionAtom {
       size_t start = i;
 #if USE_DELTA_DIFFERENCES
       if (i > 1 && actions[i].delta() >= actions[i - 1].delta() &&
-          actions[i].delta() - actions[i - 1].delta() <
-              actions[i].delta()) {
+          actions[i].delta() - actions[i - 1].delta() < actions[i].delta()) {
         actions[i].m_difference = true;
         dd = actions[i].delta() - actions[i - 1].delta();
       }
@@ -336,8 +336,7 @@ struct ActionAtom {
 
 #if USE_DELTA_DIFFERENCES
         if (i > 1 && actions[i].delta() >= actions[i - 1].delta() &&
-            actions[i].delta() - actions[i - 1].delta() <
-                actions[i].delta()) {
+            actions[i].delta() - actions[i - 1].delta() < actions[i].delta()) {
           actions[i].m_difference = true;
           dd = actions[i].delta() - actions[i - 1].delta();
         }
@@ -360,34 +359,34 @@ struct ActionAtom {
     }
   }
 
-    static Result<ActionAtom> read(std::istream& in, size_t size) {
-	ActionAtom a;
-	a.size = size;
+  static Result<ActionAtom> read(std::istream &in, size_t size) {
+    ActionAtom a;
+    a.size = size;
 
-	a.m_actions.resize(util::binRead<size_t>(in));
+    a.m_actions.resize(util::binRead<size_t>(in));
 
-	// skip reading for now
-	in.seekg(size - 8, std::ios::cur);
+    // skip reading for now
+    in.seekg(size - 8, std::ios::cur);
 
-	return a;
+    return a;
+  }
+
+  Result<> write(std::ostream &out) {
+    util::binWrite(out, m_actions.size());
+
+    std::vector<Section> sections;
+
+    ActionAtom::prepareSections(m_actions, sections);
+
+    for (auto &section : sections) {
+      section.write(out);
     }
 
-    Result<> write(std::ostream& out) {
-	util::binWrite(out, m_actions.size());
-
-	std::vector<Section> sections;
-
-	ActionAtom::prepareSections(m_actions, sections);
-
-	for (auto& section : sections) {
-	    section.write(out);
-	}
-
-	return {};
-    }
+    return {};
+  }
 };
 
-} // v3
+} // namespace v3
 
 SLC_NS_END
 

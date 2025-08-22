@@ -3,26 +3,25 @@
 
 #include "slc/util.hpp"
 
-#include <string>
 #include <expected>
+#include <string>
 
 SLC_NS_BEGIN
 
 namespace v3 {
 
 struct Error {
-    // Concise error description.
-    std::string m_message;
+  // Concise error description.
+  std::string m_message;
 
-    Error(std::string msg) : m_message(msg) {}
-    // std::string is constructible from const char*
-    Error(const char* msg) : m_message(msg) {}
+  Error(std::string msg) : m_message(msg) {}
+  // std::string is constructible from const char*
+  Error(const char *msg) : m_message(msg) {}
 };
 
-template<typename T = void>
-using Result = std::expected<T, Error>;
+template <typename T = void> using Result = std::expected<T, Error>;
 
-}
+} // namespace v3
 
 SLC_NS_END
 
