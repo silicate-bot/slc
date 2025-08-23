@@ -6,6 +6,7 @@
 #include "slc/util.hpp"
 
 #include <cassert>
+#include <deque>
 #include <print>
 #include <vector>
 
@@ -29,7 +30,7 @@ public:
   bool m_player2;
   bool m_difference;
 
-  static PlayerInput fromAction(const Action &action, uint64_t dd) {
+  static PlayerInput fromAction(const Action &action) {
     assert(action.isPlayer());
 
     PlayerInput p;
@@ -60,11 +61,16 @@ public:
     return p;
   }
 
-  const uint64_t prepareState(uint8_t byteSize) const {
+  uint64_t prepareState(uint8_t byteSize) const {
     uint64_t byteMask =
         byteSize == 8 ? -((uint64_t)1) : (1ull << (byteSize * 8ull)) - 1ull;
     return byteMask & ((m_delta << 4) | (static_cast<uint8_t>(m_button) << 2) |
                        (m_player2 << 1) | m_holding);
+  }
+
+  bool weakEq(const PlayerInput &other) {
+    return m_delta == other.m_delta && m_holding == other.m_holding &&
+           m_player2 == other.m_player2 && m_button == other.m_button;
   }
 };
 
@@ -72,9 +78,9 @@ class Section {
 public:
   enum class Identifier : uint8_t {
     /**
-     * 00 XX    XXXX
-     * -- --    ----
-     * ID Size Count (2^X)
+     * 00 XX    XXXX       XXXXXXXX
+     * -- --    ----       ---------
+     * ID Size Count (2^X) Reserved
      */
     Input = 0,
     /**
@@ -95,8 +101,8 @@ public:
 
 private:
   // Player
-  uint8_t m_countExp;
-  uint8_t m_repeatsExp;
+  uint16_t m_countExp;
+  uint16_t m_repeatsExp;
 
   // Special
   SpecialType m_specialType;
@@ -107,7 +113,7 @@ private:
 protected:
 public:
   Identifier m_id;
-  uint8_t m_deltaSize;
+  uint16_t m_deltaSize;
   std::vector<PlayerInput> m_playerInputs;
   bool m_markedForRemoval = false;
 
@@ -119,7 +125,7 @@ public:
   }
   uint64_t getInputCount() const { return 1ull << (uint64_t)m_countExp; }
   uint64_t getRepeatCount() { return 1ull << (uint64_t)m_repeatsExp; }
-  inline const bool isSpecial() const { return m_id == Identifier::Special; }
+  inline bool isSpecial() const { return m_id == Identifier::Special; }
 
   void copyFrom(Section &other) {
     assert(!isSpecial());
@@ -153,9 +159,8 @@ public:
 
     s.m_id = Identifier::Input;
     uint32_t count = 0;
-    uint32_t swifts = 0;
 
-    for (int i = start; i < end; i++) {
+    for (size_t i = start; i < end; i++) {
       auto &action = actions[i];
       if (action.m_holding || !action.swift()) {
 #ifdef SLC_INSPECT
@@ -164,11 +169,8 @@ public:
                      action.swift());
 #endif
 
-        s.m_playerInputs.push_back(PlayerInput::fromAction(
-            actions[i], actions[i].delta() - actions[i - 1].delta()));
+        s.m_playerInputs.push_back(PlayerInput::fromAction(actions[i]));
         count++;
-      } else {
-        swifts++;
       }
     }
 
@@ -188,14 +190,10 @@ public:
     Section s;
 
     s.m_id = Identifier::Input;
-    s.m_playerInputs = {PlayerInput::fromAction(start, 0)};
+    s.m_playerInputs = {PlayerInput::fromAction(start)};
 
     return s;
   }
-
-  // void addPlayerInput(const Action &action) {
-  //   m_playerInputs.push_back(PlayerInput::fromAction(action));
-  // }
 
   static Result<Section> special(const Action &action) {
     assert(!action.isPlayer());
@@ -232,18 +230,118 @@ public:
     return s;
   }
 
-  static void read(std::istream &s, std::vector<Action> &actions) {
-    uint8_t initialHeader = util::binRead<uint8_t>(s);
+  std::vector<Section> runLengthEncode() {
+    assert(m_id == Identifier::Input);
 
-    Identifier id = static_cast<Identifier>(initialHeader >> 6);
+    std::deque<PlayerInput> queue;
+    std::vector<Section> newSections;
+    std::vector<PlayerInput> freeInputs;
+
+    constexpr size_t MAX_CLUSTER_SIZE = 16;
+
+    size_t i = 0;
+    while (i < m_playerInputs.size()) {
+      int64_t bestClusterScore = 0;
+      size_t bestClusterTotal = 1;
+      size_t bestCluster = 0;
+
+      for (size_t cluster = 1; cluster <= MAX_CLUSTER_SIZE; cluster *= 2) {
+        if ((i + (cluster * 2) - 1) >= m_playerInputs.size())
+          break;
+        bool matching = true;
+
+        size_t j = 1;
+        while ((i + cluster * j) < m_playerInputs.size() && j < (1 << 16)) {
+          for (size_t k = i; k < i + cluster; k++) {
+            if (!m_playerInputs[k].weakEq(m_playerInputs[k + (cluster * j)])) {
+              matching = false;
+              break;
+            }
+          }
+
+          if (!matching)
+            break;
+          j++;
+        }
+        // j--;
+
+        j = util::largestPowerOfTwo(j);
+        size_t total = j * cluster;
+        int64_t score = (int64_t)total - (int64_t)cluster;
+
+        if (bestClusterScore <= score) {
+          // std::println("cluster {}, score {}, total {}, j {}", cluster,
+          // score,
+          //                       total, j);
+          bestCluster = cluster;
+          bestClusterScore = score;
+          bestClusterTotal = total;
+        }
+      }
+
+      if (bestCluster > 0) {
+        size_t j = 0;
+        while (j < freeInputs.size()) {
+          uint64_t count = freeInputs.size() - j;
+          Section s;
+          s.m_playerInputs = std::vector<PlayerInput>(
+              freeInputs.begin() + j, freeInputs.begin() + j + count);
+          s.m_countExp = util::exponentOfTwo(count);
+          s.m_deltaSize = m_deltaSize;
+          s.m_id = Identifier::Input;
+
+          j += util::largestPowerOfTwo(count);
+          newSections.push_back(s);
+        }
+
+        freeInputs.clear();
+
+        Section s;
+        s.m_id = Identifier::Repeat;
+        s.m_countExp = util::exponentOfTwo(bestCluster);
+        s.m_repeatsExp = util::exponentOfTwo(bestClusterTotal / bestCluster);
+        s.m_deltaSize = m_deltaSize;
+        for (size_t k = 0; k < bestCluster; k++) {
+          s.m_playerInputs.push_back(m_playerInputs[i + k]);
+        }
+
+        newSections.push_back(s);
+      } else {
+        freeInputs.push_back(m_playerInputs[i]);
+        bestClusterTotal = 1;
+      }
+
+      i += bestClusterTotal;
+    }
+
+    size_t j = 0;
+    while (j < freeInputs.size()) {
+      uint64_t count = util::largestPowerOfTwo(freeInputs.size() - j);
+      Section s;
+      s.m_playerInputs = std::vector<PlayerInput>(
+          freeInputs.begin() + j, freeInputs.begin() + j + count);
+      s.m_countExp = util::exponentOfTwo(count);
+      s.m_deltaSize = m_deltaSize;
+      s.m_id = Identifier::Input;
+
+      j += count;
+      newSections.push_back(s);
+    }
+
+    return newSections;
+  }
+
+  static void read(std::istream &s, std::vector<Action> &actions) {
+    uint16_t initialHeader = util::binRead<uint16_t>(s);
+
+    Identifier id = static_cast<Identifier>(initialHeader >> 14);
     switch (id) {
     case Identifier::Input: {
-      uint8_t deltaSize = (initialHeader >> 4) & 0b11;
-      uint8_t countExp = initialHeader & 0b1111;
+      uint16_t deltaSize = (initialHeader >> 12) & 0b11;
+      uint16_t countExp = (initialHeader >> 8) & 0b1111;
 
       uint64_t byteSize = 1ull << (uint64_t)deltaSize;
       uint64_t length = 1ull << (uint64_t)countExp;
-
       for (uint64_t i = 0; i < length; i++) {
         uint64_t state = 0;
         s.read(reinterpret_cast<char *>(&state), byteSize);
@@ -272,10 +370,62 @@ public:
 
       break;
     };
+    case Identifier::Repeat: {
+      uint16_t deltaSize = (initialHeader >> 12) & 0b11;
+      uint16_t countExp = (initialHeader >> 8) & 0b1111;
+      uint16_t repeatsExp = (initialHeader >> 3) & 0b11111;
+
+      uint64_t byteSize = 1ull << (uint64_t)deltaSize;
+      uint64_t length = 1ull << (uint64_t)countExp;
+      uint64_t repeats = 1ull << (uint64_t)repeatsExp;
+
+      std::vector<PlayerInput> inputs;
+
+      for (uint64_t i = 0; i < length; i++) {
+        uint64_t state = 0;
+        s.read(reinterpret_cast<char *>(&state), byteSize);
+
+        uint64_t previousFrame = 0;
+        if (inputs.size() > 0) {
+          previousFrame = inputs.back().m_frame;
+        }
+
+        PlayerInput p = PlayerInput::fromState(previousFrame, state);
+        inputs.push_back(p);
+      }
+
+      for (uint64_t i = 0; i < repeats; i++) {
+        for (size_t j = 0; j < inputs.size(); j++) {
+          auto &p = inputs[j];
+          uint64_t previousFrame = 0;
+          if (actions.size() > 0) {
+            previousFrame = actions.back().m_frame;
+          }
+
+          if (p.m_button == PlayerInput::Button::Swift) {
+            actions.push_back(Action(previousFrame, p.m_delta,
+                                     Action::ActionType::Jump, true,
+                                     p.m_player2));
+            actions.back().m_swift = true;
+            actions.push_back(Action(previousFrame + p.m_delta, 0,
+                                     Action::ActionType::Jump, false,
+                                     p.m_player2));
+            actions.back().m_swift = true;
+          } else {
+            actions.push_back(
+                Action(previousFrame, p.m_delta,
+                       static_cast<Action::ActionType>(p.m_button), p.m_holding,
+                       p.m_player2));
+          }
+        }
+      }
+
+      break;
+    }
     case Identifier::Special: {
-      uint8_t deltaSize = initialHeader & 0b11;
+      uint16_t deltaSize = (initialHeader >> 8) & 0b11;
       SpecialType specialType =
-          static_cast<SpecialType>((initialHeader << 2) & 0b1111);
+          static_cast<SpecialType>((initialHeader >> 10) & 0b1111);
 
       uint64_t frameDelta;
       s.read(reinterpret_cast<char *>(&frameDelta), 1 << deltaSize);
@@ -305,13 +455,10 @@ public:
 
       break;
     };
-    default: {
-      break;
-    }
     }
   }
 
-  const void write(std::ostream &s) const {
+  void write(std::ostream &s) const {
     if (m_markedForRemoval)
       return;
 
@@ -321,7 +468,7 @@ public:
       std::println("Writing Input section: {} count ({} exp), {} delta size",
                    getInputCount(), m_countExp, m_deltaSize);
 #endif
-      uint8_t header = m_countExp | (m_deltaSize << 4);
+      uint16_t header = (m_countExp << 8) | (m_deltaSize << 12);
 
       util::binWrite(s, header);
 
@@ -343,11 +490,24 @@ public:
                         m_deltaSize << 12 | m_countExp << 8 | m_repeatsExp << 3;
 
       util::binWrite(s, header);
+
+      uint64_t byteSize = getRealDeltaSize();
+
+      for (const auto &input : m_playerInputs) {
+
+        uint64_t state = input.prepareState(byteSize);
+
+        s.write(
+            reinterpret_cast<const char *>(reinterpret_cast<uintptr_t>(&state)),
+            byteSize);
+      }
+
       break;
     }
     case Identifier::Special: {
-      uint8_t header = static_cast<uint8_t>(Identifier::Special) << 6 |
-                       static_cast<uint8_t>(m_specialType) << 2 | m_deltaSize;
+      uint16_t header = static_cast<uint16_t>(Identifier::Special) << 14 |
+                        static_cast<uint16_t>(m_specialType) << 10 |
+                        (m_deltaSize << 8);
 
       util::binWrite(s, header);
 
@@ -373,125 +533,6 @@ public:
     }
   }
 };
-
-struct ActionAtom {
-  static inline constexpr AtomId id = AtomId::Action;
-  size_t size;
-
-  std::vector<Action> m_actions;
-
-  static inline bool swiftCompatible(std::vector<Action> &actions, size_t i) {
-    assert(i < actions.size());
-
-    return actions[i].delta() == 0 && !actions[i].m_holding &&
-           actions[i - 1].m_holding != actions[i].m_holding &&
-           actions[i - 1].m_player2 == actions[i].m_player2 &&
-           actions[i - 1].m_type == actions[i].m_type &&
-           actions[i].m_type == Action::ActionType::Jump;
-  }
-
-  static inline bool canJoin(std::vector<Action> &actions, size_t count,
-                             size_t i) {
-    static constexpr size_t MAX_SECTION_ACTIONS = 1 << 16;
-
-    return i < (actions.size() - 1) && count < MAX_SECTION_ACTIONS &&
-           actions[i + 1].isPlayer() &&
-           actions[i + 1].getMinimumSize() == actions[i].getMinimumSize();
-  }
-
-  // "literally slc2"
-  static Result<> prepareSections(std::vector<Action> &actions,
-                                  std::vector<Section> &sections) {
-    size_t i = 0;
-    while (i < actions.size()) {
-      if (!actions[i].isPlayer()) {
-        auto section = TRY(Section::special(actions[i]));
-
-        sections.push_back(section);
-
-        continue;
-      }
-
-      uint32_t count = 1;
-      uint32_t pureCount = 1;
-      uint32_t swifts = 0;
-      uint32_t pureSwifts = 0;
-      size_t start = i;
-
-      uint8_t minSize = actions[i].getMinimumSize();
-
-      while (canJoin(actions, pureCount, i)) {
-        i++;
-        count++;
-
-        if (swiftCompatible(actions, i)) {
-          actions[i - 1].m_swift = true;
-          actions[i].m_swift = true;
-          swifts++;
-        } else {
-          pureCount++;
-        }
-
-        if (util::largestPowerOfTwo(pureCount) == pureCount) {
-          pureSwifts = swifts;
-        }
-      }
-
-      count--;
-
-      count = util::largestPowerOfTwo(pureCount);
-      i = start + count + pureSwifts;
-
-      Section s = Section::player(actions, start, i);
-      s.m_deltaSize = minSize;
-
-      sections.push_back(s);
-    }
-
-    return {};
-  }
-
-  static Result<ActionAtom> read(std::istream &in, size_t size) {
-    ActionAtom a;
-    a.size = size;
-
-    size_t count = util::binRead<uint64_t>(in);
-    a.m_actions.reserve(count);
-
-    while (a.m_actions.size() < count) {
-      Section::read(in, a.m_actions);
-    }
-
-    return a;
-  }
-
-  Result<> write(std::ostream &out) {
-    util::binWrite<uint64_t>(out, m_actions.size());
-
-    std::vector<Section> sections;
-
-    TRY(ActionAtom::prepareSections(m_actions, sections));
-
-    for (auto &section : sections) {
-      section.write(out);
-    }
-
-    return {};
-  }
-
-  void addAction(uint64_t frame, Action::ActionType actionType, bool holding,
-                 bool p2) {
-    uint64_t previousFrame = 0;
-    if (m_actions.size() > 0) {
-      previousFrame = m_actions.back().m_frame;
-    }
-
-    uint64_t delta = frame - previousFrame;
-
-    m_actions.push_back(Action(previousFrame, delta, actionType, holding, p2));
-  }
-};
-
 } // namespace v3
 
 SLC_NS_END

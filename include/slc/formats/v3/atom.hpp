@@ -45,13 +45,8 @@ struct NullAtom {
     };
   }
 
-  Result<> write(std::ostream &out) const { return {}; }
+  Result<> write([[maybe_unused]] std::ostream &out) const { return {}; }
 };
-
-template <IsAtom... Ts> consteval auto idsArray() {
-  using AtomIdT = std::underlying_type_t<AtomId>;
-  return std::array<AtomIdT, sizeof...(Ts)>{static_cast<AtomIdT>(Ts::id)...};
-}
 
 template <IsAtom... Ts> struct AtomSerializer {
   using Self = AtomSerializer<Ts...>;
@@ -60,8 +55,6 @@ template <IsAtom... Ts> struct AtomSerializer {
   using Read = Result<Variant> (*)(std::istream &, size_t);
 
   static consteval auto constructLookup() {
-    constexpr auto ids = idsArray<Ts...>();
-
     // AtomIds should be continuous and in ascending order; this is perfectly
     // legal to do
     std::array<Read, sizeof...(Ts)> lookup{};
@@ -87,7 +80,7 @@ template <IsAtom... Ts> struct AtomSerializer {
 
     // default to NullAtom if parser doesn't recognize atom type
     // this is incredibly useful for defining custom atoms
-    if (idx > lookup.size())
+    if (idx >= lookup.size())
       return NullAtom::read(in, size);
     if (auto reader = lookup[idx])
       return reader(in, size);
@@ -150,7 +143,7 @@ public:
 
   void add(Variant v) { m_atoms.push_back(v); }
 
-  const size_t count() const { return m_atoms.size(); }
+  size_t count() const { return m_atoms.size(); }
 
   Result<> readAll(std::istream &in) {
     auto pos = in.tellg();

@@ -2,9 +2,15 @@
 #define _SLC_V3_REPLAY_HPP
 
 #include "slc/formats/v3/atom.hpp"
+#include "slc/formats/v3/builtin.hpp"
 #include "slc/formats/v3/error.hpp"
 #include "slc/formats/v3/metadata.hpp"
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused"
 #include "slc/formats/v3/section.hpp"
+#pragma GCC diagnostic pop
+
 #include "slc/util.hpp"
 
 #include <array>

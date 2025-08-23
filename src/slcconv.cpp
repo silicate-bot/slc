@@ -1,3 +1,4 @@
+#include "slc/formats/v2.hpp"
 #include <filesystem>
 #include <fstream>
 #define SLC_NO_DEFAULT
@@ -29,6 +30,11 @@ int main() {
   size_t oldSize = fs::file_size(in_path);
   std::ifstream in(in_path, std::ios::binary);
   auto oldrep = slc::v2::Replay<OldMeta>::read(in);
+  // oldrep->clearInputs();
+  // for (int i = 1; i < 129; i++) {
+  // oldrep->addInput(i, slc::v2::Input::InputType::Jump, false, true);
+  // oldrep->addInput(i, slc::v2::Input::InputType::Jump, false, false);
+  //}
   if (oldrep.has_value()) {
     auto rr = oldrep.value();
 
@@ -70,7 +76,7 @@ int main() {
 
     size_t newSize = fs::file_size(out_path);
 
-    std::println("OLD: {}b, NEW: {}b ({:.2f}\% savings)", oldSize, newSize,
+    std::println("OLD: {}b, NEW: {}b ({:.2f}% savings)", oldSize, newSize,
                  (1.0 - (double)newSize / (double)oldSize) * 100.0);
 
     std::println("------------------------------------");
@@ -90,8 +96,6 @@ int main() {
             [&](slc::v3::ActionAtom &atom) {
               std::println("action atom with {} inputs", atom.m_actions.size());
               std::println("checking correctness...");
-
-              int fails = 0;
 
               for (size_t i = 0; i < atom.m_actions.size(); i++) {
                 const auto &na = atom.m_actions[i];

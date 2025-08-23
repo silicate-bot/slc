@@ -72,9 +72,9 @@ public:
    */
   bool m_swift = false;
 
-  inline const bool swift() const { return m_swift; }
+  inline bool swift() const { return m_swift; }
 
-  const uint8_t getMinimumSize() const {
+  uint8_t getMinimumSize() const {
     uint64_t offset = 4ull;
     const uint64_t delta = m_delta;
     // Special
@@ -97,14 +97,12 @@ public:
     }
   }
 
-  inline const bool isPlayer() const {
-    return static_cast<uint8_t>(m_type) <= 3;
-  }
+  inline bool isPlayer() const { return static_cast<uint8_t>(m_type) <= 3; }
 
   void recalculateDelta(uint64_t previousFrame) {
     m_delta = m_frame - previousFrame;
   }
-  inline const uint64_t delta() const { return m_delta; }
+  inline uint64_t delta() const { return m_delta; }
 
   Action() = default;
   Action(uint64_t currentFrame, uint64_t delta, ActionType button, bool holding,

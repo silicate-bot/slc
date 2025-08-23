@@ -16,11 +16,12 @@ struct Metadata {
   double m_tps;
   uint64_t m_seed;
 
-  uint32_t m_checksum;
+  uint32_t m_version = 1;
   uint32_t m_build;
 
   char __padding[40] = {0};
 };
+
 static_assert(sizeof(Metadata) == METADATA_SIZE);
 
 } // namespace v3

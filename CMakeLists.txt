@@ -13,6 +13,12 @@ project(libslc)
 
 add_library(libslc INTERFACE)
 
+if (MSVC)
+	#TODO: write compile options for msvc
+else()
+	target_compile_options(libslc INTERFACE -Wall -Wextra -Wpedantic -Werror -Wno-gnu)
+endif()
+
 target_include_directories(libslc INTERFACE include)
 
 add_executable(slcconv

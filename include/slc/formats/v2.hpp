@@ -99,7 +99,7 @@ public:
     m_button = InputType::TPS;
   }
 
-  inline const uint8_t requiredBytes() const {
+  inline uint8_t requiredBytes() const {
     if (m_button == InputType::TPS)
       return 8;
 
@@ -148,7 +148,7 @@ public:
     return b;
   }
 
-  const void writeMeta(std::ostream &s) const {
+  void writeMeta(std::ostream &s) const {
     if (m_length <= 0)
       return;
 
@@ -157,14 +157,14 @@ public:
     util::binWrite(s, m_length);
   }
 
-  const void write(std::ostream &s, const std::vector<Input> &inputs) const {
+  void write(std::ostream &s, const std::vector<Input> &inputs) const {
     if (m_length <= 0)
       return;
 
     uint64_t byteMask =
         m_byteSize == 8 ? -((uint64_t)1) : (1ull << (m_byteSize * 8ull)) - 1ull;
 
-    for (int i = m_start; i < m_start + m_length; i++) {
+    for (uint64_t i = m_start; i < m_start + m_length; i++) {
       uint64_t state = inputs.at(i).m_state & byteMask;
 
       s.write(
@@ -178,7 +178,7 @@ public:
   }
 
   void read(std::istream &s, std::vector<Input> &inputs, uint64_t &frame) {
-    for (int i = m_start; i < m_start + m_length; i++) {
+    for (uint64_t i = m_start; i < m_start + m_length; i++) {
       s.read(reinterpret_cast<char *>(
                  reinterpret_cast<uintptr_t>(&inputs.at(i).m_state)),
              m_byteSize);
@@ -355,7 +355,7 @@ public:
    *
    * This is a convenience method that calls `.size()` on the `m_inputs` vector.
    */
-  const size_t length() const { return this->m_inputs.size(); }
+  size_t length() const { return this->m_inputs.size(); }
 
   /**
    * Read a replay from a stream.
@@ -402,7 +402,7 @@ public:
 
     uint64_t frame = 0;
 
-    for (int i = 0; i < blobCount; i++) {
+    for (uint64_t i = 0; i < blobCount; i++) {
       blobs.at(i).read(s, replay.m_inputs, frame);
     }
 
@@ -419,7 +419,7 @@ public:
    * Save a replay to a stream.
    * Empty replays are supported.
    */
-  const void write(std::ostream &s) {
+  void write(std::ostream &s) {
     s.write(HEADER, 4);
     util::binWrite(s, this->m_tps);
 
@@ -441,7 +441,6 @@ public:
     // will take up more space than a typical macro. This scenario is so
     // incredibly unlikely, that it's worth the tradeoff.
     std::vector<_Blob> blobs;
-    uint64_t currentBlobSize = 0;
     for (size_t i = 0; i < this->m_inputs.size(); i++) {
       const auto &input = this->m_inputs.at(i);
       uint8_t inputSize = input.requiredBytes();
