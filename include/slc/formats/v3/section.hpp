@@ -318,8 +318,6 @@ public:
         repeat.m_deltaSize = m_deltaSize;
         repeat.m_repeatsExp = util::exponentOfTwo(bestClusterRepetitions);
         repeat.m_countExp = util::exponentOfTwo(bestCluster);
-        std::println("adding repeat {} {}", bestCluster,
-                     bestClusterRepetitions);
         for (size_t offset = 0; offset < bestCluster; offset++) {
           repeat.m_playerInputs.push_back(m_playerInputs[idx + offset]);
         }
