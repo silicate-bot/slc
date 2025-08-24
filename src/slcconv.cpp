@@ -31,10 +31,10 @@ int main() {
   std::ifstream in(in_path, std::ios::binary);
   auto oldrep = slc::v2::Replay<OldMeta>::read(in);
   // oldrep->clearInputs();
-  // for (int i = 1; i < 129; i++) {
-  // oldrep->addInput(i, slc::v2::Input::InputType::Jump, false, true);
-  // oldrep->addInput(i, slc::v2::Input::InputType::Jump, false, false);
-  //}
+  for (int i = 1; i < 161001; i++) {
+    // oldrep->addInput(i, slc::v2::Input::InputType::Jump, false, true);
+    // oldrep->addInput(i, slc::v2::Input::InputType::Jump, false, false);
+  }
   if (oldrep.has_value()) {
     auto rr = oldrep.value();
 

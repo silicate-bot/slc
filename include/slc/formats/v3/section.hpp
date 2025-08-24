@@ -230,103 +230,113 @@ public:
     return s;
   }
 
+  static void distributeInputsToSections(std::vector<Section> &sections,
+                                         std::vector<PlayerInput> &inputs,
+                                         uint16_t deltaSize) {
+    size_t i = 0;
+    while (i < inputs.size()) {
+      uint64_t count = util::largestPowerOfTwo(inputs.size() - i);
+      Section s;
+      s.m_playerInputs = std::vector<PlayerInput>(inputs.begin() + i,
+                                                  inputs.begin() + i + count);
+      s.m_countExp = util::exponentOfTwo(count);
+      s.m_deltaSize = deltaSize;
+      s.m_id = Identifier::Input;
+
+      i += count;
+      sections.push_back(s);
+    }
+
+    inputs.clear();
+  }
+
   std::vector<Section> runLengthEncode() {
     assert(m_id == Identifier::Input);
 
-    std::deque<PlayerInput> queue;
     std::vector<Section> newSections;
     std::vector<PlayerInput> freeInputs;
 
-    constexpr size_t MAX_CLUSTER_SIZE = 16;
+    constexpr size_t MAX_CLUSTER_SIZE = 64;
 
-    size_t i = 0;
-    while (i < m_playerInputs.size()) {
-      int64_t bestClusterScore = 0;
-      size_t bestClusterTotal = 1;
+    size_t idx = 0;
+    const size_t N = m_playerInputs.size();
+    while (idx < N) {
+      bool foundAnyRepetitions = false; // convenience
       size_t bestCluster = 0;
+      size_t bestClusterRepetitions = 0;
+      int64_t bestClusterScore = 0;
 
-      for (size_t cluster = 1; cluster <= MAX_CLUSTER_SIZE; cluster *= 2) {
-        if ((i + (cluster * 2) - 1) >= m_playerInputs.size())
+      for (size_t cluster = 1; cluster <= MAX_CLUSTER_SIZE && cluster <= N;
+           cluster <<= 1) {
+        if (idx + cluster >= N)
           break;
-        bool matching = true;
+        // now determine the longest repeating cluster
+        size_t offset = 1;
 
-        size_t j = 1;
-        while ((i + cluster * j) < m_playerInputs.size() && j < (1 << 16)) {
-          for (size_t k = i; k < i + cluster; k++) {
-            if (!m_playerInputs[k].weakEq(m_playerInputs[k + (cluster * j)])) {
-              matching = false;
+        while (true) {
+          const size_t start = idx + offset * cluster;
+          const size_t end = idx + offset * (cluster + 1);
+
+          if (end >= N) {
+            break;
+          }
+
+          bool allEqual = true;
+          for (size_t j = 0; j < cluster; j++) {
+            if (!m_playerInputs[idx + j].weakEq(m_playerInputs[start + j])) {
+              allEqual = false;
               break;
             }
           }
 
-          if (!matching)
+          if (!allEqual)
             break;
-          j++;
+
+          offset += 1;
         }
-        // j--;
 
-        j = util::largestPowerOfTwo(j);
-        size_t total = j * cluster;
-        int64_t score = (int64_t)total - (int64_t)cluster;
+        offset -= 1;
+        if (offset <= 1)
+          continue; // impossible for this to be any good
 
-        if (bestClusterScore <= score) {
-          // std::println("cluster {}, score {}, total {}, j {}", cluster,
-          // score,
-          //                       total, j);
-          bestCluster = cluster;
+        offset = util::largestPowerOfTwo(offset); // must be greater than 1 here
+
+        int64_t score = (int64_t)cluster * ((int64_t)offset - 1);
+        if (score > bestClusterScore) {
+          foundAnyRepetitions = true;
           bestClusterScore = score;
-          bestClusterTotal = total;
+          bestCluster = cluster;
+          bestClusterRepetitions = offset;
         }
       }
 
-      if (bestCluster > 0) {
-        size_t j = 0;
-        while (j < freeInputs.size()) {
-          uint64_t count = freeInputs.size() - j;
-          Section s;
-          s.m_playerInputs = std::vector<PlayerInput>(
-              freeInputs.begin() + j, freeInputs.begin() + j + count);
-          s.m_countExp = util::exponentOfTwo(count);
-          s.m_deltaSize = m_deltaSize;
-          s.m_id = Identifier::Input;
+      if (foundAnyRepetitions) {
+        distributeInputsToSections(newSections, freeInputs,
+                                   m_deltaSize); // flush buffer
 
-          j += util::largestPowerOfTwo(count);
-          newSections.push_back(s);
+        Section repeat;
+        repeat.m_deltaSize = m_deltaSize;
+        repeat.m_repeatsExp = util::exponentOfTwo(bestClusterRepetitions);
+        repeat.m_countExp = util::exponentOfTwo(bestCluster);
+        std::println("adding repeat {} {}", bestCluster,
+                     bestClusterRepetitions);
+        for (size_t offset = 0; offset < bestCluster; offset++) {
+          repeat.m_playerInputs.push_back(m_playerInputs[idx + offset]);
         }
+        repeat.m_id = Identifier::Repeat;
+        newSections.push_back(std::move(repeat));
 
-        freeInputs.clear();
+        idx += bestCluster * bestClusterRepetitions;
 
-        Section s;
-        s.m_id = Identifier::Repeat;
-        s.m_countExp = util::exponentOfTwo(bestCluster);
-        s.m_repeatsExp = util::exponentOfTwo(bestClusterTotal / bestCluster);
-        s.m_deltaSize = m_deltaSize;
-        for (size_t k = 0; k < bestCluster; k++) {
-          s.m_playerInputs.push_back(m_playerInputs[i + k]);
-        }
-
-        newSections.push_back(s);
       } else {
-        freeInputs.push_back(m_playerInputs[i]);
-        bestClusterTotal = 1;
+        freeInputs.push_back(m_playerInputs[idx]);
+        idx += 1;
       }
-
-      i += bestClusterTotal;
     }
 
-    size_t j = 0;
-    while (j < freeInputs.size()) {
-      uint64_t count = util::largestPowerOfTwo(freeInputs.size() - j);
-      Section s;
-      s.m_playerInputs = std::vector<PlayerInput>(
-          freeInputs.begin() + j, freeInputs.begin() + j + count);
-      s.m_countExp = util::exponentOfTwo(count);
-      s.m_deltaSize = m_deltaSize;
-      s.m_id = Identifier::Input;
-
-      j += count;
-      newSections.push_back(s);
-    }
+    distributeInputsToSections(
+        newSections, freeInputs,
+        m_deltaSize); // flush buffer after everything as well
 
     return newSections;
   }
