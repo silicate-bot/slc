@@ -72,9 +72,7 @@ public:
    */
   bool m_swift = false;
 
-  inline bool swift() const { return m_swift; }
-
-  uint8_t getMinimumSize() const {
+  constexpr uint8_t getMinimumSize() const {
     uint64_t offset = 4ull;
     const uint64_t delta = m_delta;
     // Special
@@ -97,12 +95,29 @@ public:
     }
   }
 
-  inline bool isPlayer() const { return static_cast<uint8_t>(m_type) <= 3; }
+  constexpr bool isPlayer() const { return static_cast<uint8_t>(m_type) <= 3; }
+  constexpr uint64_t delta() const { return m_delta; }
+  constexpr bool swift() const { return m_swift; }
 
   void recalculateDelta(uint64_t previousFrame) {
     m_delta = m_frame - previousFrame;
   }
-  inline uint64_t delta() const { return m_delta; }
+
+  friend inline bool operator<(const Action &lhs, const uint64_t frame) {
+    return lhs.m_frame < frame;
+  }
+
+  friend inline bool operator>(const Action &lhs, const uint64_t frame) {
+    return frame < lhs.m_frame;
+  }
+
+  friend inline bool operator<=(const Action &lhs, const uint64_t frame) {
+    return !(lhs > frame);
+  }
+
+  friend inline bool operator>=(const Action &lhs, const uint64_t frame) {
+    return !(lhs < frame);
+  }
 
   Action() = default;
   Action(uint64_t currentFrame, uint64_t delta, ActionType button, bool holding,
@@ -126,7 +141,9 @@ public:
     m_type = button;
     m_seed = seed;
   }
+
   Action(uint64_t currentFrame, uint64_t delta, double tps) {
+    assert(tps > 0.0);
     m_frame = currentFrame + delta;
     m_delta = delta;
     m_type = ActionType::TPS;

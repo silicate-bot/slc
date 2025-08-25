@@ -141,7 +141,8 @@ public:
 public:
   std::vector<Variant> m_atoms;
 
-  void add(Variant v) { m_atoms.push_back(v); }
+  void add(const Variant &v) { m_atoms.push_back(v); }
+  void add(Variant &&v) { m_atoms.push_back(v); }
 
   size_t count() const { return m_atoms.size(); }
 

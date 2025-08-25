@@ -244,7 +244,7 @@ public:
       s.m_id = Identifier::Input;
 
       i += count;
-      sections.push_back(s);
+      sections.push_back(std::move(s));
     }
 
     inputs.clear();
@@ -318,16 +318,17 @@ public:
         repeat.m_deltaSize = m_deltaSize;
         repeat.m_repeatsExp = util::exponentOfTwo(bestClusterRepetitions);
         repeat.m_countExp = util::exponentOfTwo(bestCluster);
-        for (size_t offset = 0; offset < bestCluster; offset++) {
-          repeat.m_playerInputs.push_back(m_playerInputs[idx + offset]);
-        }
+        repeat.m_playerInputs.insert(
+            repeat.m_playerInputs.end(), m_playerInputs.begin() + idx,
+            m_playerInputs.begin() + idx + bestCluster);
+
         repeat.m_id = Identifier::Repeat;
         newSections.push_back(std::move(repeat));
 
         idx += bestCluster * bestClusterRepetitions;
 
       } else {
-        freeInputs.push_back(m_playerInputs[idx]);
+        freeInputs.push_back(std::move(m_playerInputs[idx]));
         idx += 1;
       }
     }
@@ -435,7 +436,7 @@ public:
       SpecialType specialType =
           static_cast<SpecialType>((initialHeader >> 10) & 0b1111);
 
-      uint64_t frameDelta;
+      uint64_t frameDelta = 0;
       s.read(reinterpret_cast<char *>(&frameDelta), 1 << deltaSize);
 
       uint64_t currentFrame = 0;
@@ -472,10 +473,6 @@ public:
 
     switch (m_id) {
     case Identifier::Input: {
-#ifdef SLC_INSPECT
-      std::println("Writing Input section: {} count ({} exp), {} delta size",
-                   getInputCount(), m_countExp, m_deltaSize);
-#endif
       uint16_t header = (m_countExp << 8) | (m_deltaSize << 12);
 
       util::binWrite(s, header);
@@ -521,9 +518,7 @@ public:
 
       uint64_t delta = m_special.delta();
 
-      s.write(
-          reinterpret_cast<const char *>(reinterpret_cast<uintptr_t>(&delta)),
-          getRealDeltaSize());
+      s.write(reinterpret_cast<const char *>(&delta), getRealDeltaSize());
 
       switch (m_specialType) {
       case SpecialType::Restart:

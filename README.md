@@ -4,10 +4,6 @@
 
 A tiny, fast and extensible replay format, primarly used for Geometry Dash replays.
 
-> slc version 3 is now **stable** and ready to be used in production code. However, not all optimizations are present (most notably, run length encoding is absent).
-> Please keep this in mind when using this library - it'll continue to evolve (although it's unlikely to introduce breaking changes).
-> The replay format will not change between patches.
-
 ### Note on universality
 
 Unlike slc version 2, slc version 3 is designed to be incredibly modular and extensible. Assuming you (or the developer of the tool you're using) use(s) builtin atoms for what they're designed to do, this format can prove to be useful in a cross-bot setting as well.
@@ -32,7 +28,7 @@ slc::Replay<> replay;
 
 replay.m_meta.m_tps = 480.0; // Set TPS for all action streams (atoms)
 
-replay.m_atoms.add(actions); // Add atom to replay
+replay.m_atoms.add(std::move(actions)); // Add atom to replay
 
 // Save the replay
 std::ostream file("out.slc"); // Recommended to use .slc as the extension

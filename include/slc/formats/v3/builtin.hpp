@@ -43,7 +43,9 @@ private:
       if (!actions[i].isPlayer()) {
         auto section = TRY(Section::special(actions[i]));
 
-        sections.push_back(section);
+        sections.push_back(std::move(section));
+
+        i++;
 
         continue;
       }
@@ -199,6 +201,16 @@ public:
 
     return {};
   }
+
+  /**
+   * The length of the underlying Action array.
+   */
+  constexpr size_t length() const { return m_actions.size(); }
+
+  /**
+   * Removes all actions from this atom.
+   */
+  void clear() { m_actions.clear(); }
 
   /**
    * Clips the actions up to a specific frame, removing those that happened

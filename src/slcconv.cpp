@@ -1,4 +1,5 @@
 #include "slc/formats/v2.hpp"
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #define SLC_NO_DEFAULT
@@ -30,11 +31,7 @@ int main() {
   size_t oldSize = fs::file_size(in_path);
   std::ifstream in(in_path, std::ios::binary);
   auto oldrep = slc::v2::Replay<OldMeta>::read(in);
-  // oldrep->clearInputs();
-  for (int i = 1; i < 161001; i++) {
-    // oldrep->addInput(i, slc::v2::Input::InputType::Jump, false, true);
-    // oldrep->addInput(i, slc::v2::Input::InputType::Jump, false, false);
-  }
+
   if (oldrep.has_value()) {
     auto rr = oldrep.value();
 
@@ -55,24 +52,52 @@ int main() {
         currentFrame = input.m_frame;
         continue;
       }
-      a.m_actions.push_back(
-          slc::v3::Action(currentFrame, input.m_frame - currentFrame,
-                          static_cast<ActionType>(input.m_button),
-                          input.m_holding, input.m_player2));
+
+      if (static_cast<int>(input.m_button) <
+          static_cast<int>(slc::v2::Input::InputType::Restart)) {
+        a.m_actions.push_back(
+            slc::v3::Action(currentFrame, input.m_frame - currentFrame,
+                            static_cast<ActionType>(input.m_button),
+                            input.m_holding, input.m_player2));
+        currentFrame = input.m_frame;
+        continue;
+      }
+
+      if (static_cast<int>(input.m_button) <
+          static_cast<int>(slc::v2::Input::InputType::TPS)) {
+        a.m_actions.push_back(slc::v3::Action(
+            currentFrame, input.m_frame - currentFrame,
+            static_cast<ActionType>(input.m_button), oldrep->m_meta.seed));
+        currentFrame = input.m_frame;
+        continue;
+      }
+
+      a.m_actions.push_back(slc::v3::Action(
+          currentFrame, input.m_frame - currentFrame, input.m_tps));
       currentFrame = input.m_frame;
     }
 
     std::println("converted to slc3, adding atom with inputs");
-    r.m_atoms.add(a);
+    r.m_atoms.add(std::move(a));
+
+    std::chrono::high_resolution_clock clock;
+    auto startW = clock.now();
 
     const fs::path out_path = fs::current_path() / outputName;
     {
+      std::println("writing slc3 replay...");
       std::ofstream fd(out_path, std::ios::binary);
       if (auto result = r.write(fd); !result.has_value()) {
         std::println("failed to write: {}", result.error().m_message);
         return 1;
       }
     }
+
+    auto endW = clock.now();
+
+    std::println(
+        "wrote in {}",
+        std::chrono::duration_cast<std::chrono::milliseconds>(endW - startW));
 
     size_t newSize = fs::file_size(out_path);
 
@@ -84,10 +109,15 @@ int main() {
     // verify correctness
     {
       std::ifstream fd(out_path, std::ios::binary);
+      auto startR = clock.now();
       auto res = slc::v3::Replay<>::read(fd);
       if (res.has_value()) {
         auto final = res.value();
+        auto endR = clock.now();
         std::println("read slc3 replay with {} atom(s)", final.m_atoms.count());
+        std::println("read in {}",
+                     std::chrono::duration_cast<std::chrono::milliseconds>(
+                         endR - startR));
 
         const auto visitor = overloads{
             [](slc::v3::NullAtom &atom) {
