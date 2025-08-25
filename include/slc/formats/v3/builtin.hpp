@@ -217,8 +217,7 @@ public:
    * after or during the given frame.
    */
   void clipActions(uint64_t frame) {
-    auto _ = std::remove_if(m_actions.begin(), m_actions.end(),
-                            [frame](auto &a) { return a.m_frame >= frame; });
+    std::erase_if(m_actions, [frame](auto &a) { return a.m_frame >= frame; });
   }
 };
 
