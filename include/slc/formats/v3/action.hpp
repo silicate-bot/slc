@@ -33,6 +33,9 @@ public:
 
     // TPS
     TPS = 7,
+
+    // Misc
+    Bugpoint = 8,
   };
 
   /** The frame on which this action should be executed. */
@@ -148,6 +151,14 @@ public:
     m_delta = delta;
     m_type = ActionType::TPS;
     m_tps = tps;
+  }
+
+  Action(uint64_t currentFrame, uint64_t delta, ActionType button) {
+    assert(button == ActionType::Bugpoint);
+
+    m_frame = currentFrame + delta;
+    m_delta = delta;
+    m_type = button;
   }
 };
 

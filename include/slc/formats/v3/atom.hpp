@@ -6,7 +6,6 @@
 
 #include <array>
 #include <concepts>
-#include <memory>
 #include <ostream>
 #include <type_traits>
 #include <variant>

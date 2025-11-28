@@ -14,17 +14,9 @@
 #include "slc/util.hpp"
 
 #include <array>
-#include <bit>
 #include <cassert>
-#include <cstring>
-#include <deque>
 #include <expected>
 #include <iostream>
-#include <span>
-#include <stdexcept>
-#include <string>
-#include <system_error>
-#include <vector>
 
 SLC_NS_BEGIN
 

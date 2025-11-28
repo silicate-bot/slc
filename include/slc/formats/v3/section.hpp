@@ -2,12 +2,10 @@
 #define _SLC_V3_SECTION_HPP
 
 #include "slc/formats/v3/action.hpp"
-#include "slc/formats/v3/atom.hpp"
+#include "slc/formats/v3/error.hpp"
 #include "slc/util.hpp"
 
 #include <cassert>
-#include <deque>
-#include <print>
 #include <vector>
 
 SLC_NS_BEGIN
@@ -97,7 +95,13 @@ public:
     Special,
   };
 
-  enum class SpecialType : uint8_t { Restart = 0, RestartFull, Death, TPS };
+  enum class SpecialType : uint8_t {
+    Restart = 0,
+    RestartFull,
+    Death,
+    TPS,
+    Bugpoint,
+  };
 
 private:
   // Player
@@ -217,6 +221,10 @@ public:
       s.m_seed = action.m_seed;
       s.m_specialType =
           static_cast<SpecialType>(static_cast<int>(action.m_type) - 4);
+      break;
+    }
+    case A::Bugpoint: {
+      s.m_specialType = SpecialType::Bugpoint;
       break;
     }
     default:
@@ -460,6 +468,10 @@ public:
             static_cast<Action::ActionType>(static_cast<int>(specialType) + 4),
             seed));
       }
+      case SpecialType::Bugpoint: {
+        actions.push_back(
+            Action(currentFrame, frameDelta, Action::ActionType::Bugpoint));
+      }
       }
 
       break;
@@ -528,6 +540,8 @@ public:
         break;
       case SpecialType::TPS:
         util::binWrite(s, m_tps);
+        break;
+      case SpecialType::Bugpoint:
         break;
       }
 
