@@ -5,8 +5,6 @@
 #include "slc/formats/v3/section.hpp"
 #include "slc/util.hpp"
 
-#include <print>
-
 SLC_NS_BEGIN
 
 namespace v3 {
