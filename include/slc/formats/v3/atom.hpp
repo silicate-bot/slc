@@ -74,7 +74,8 @@ template <IsAtom... Ts> struct AtomSerializer {
 
   static constexpr auto lookup = constructLookup();
 
-  static Result<Variant> read(std::istream &in, AtomId id, size_t size) {
+  static Result<Variant> read(std::istream &in, AtomId id, size_t size,
+                              uint8_t) {
     AtomIdT idx = static_cast<AtomIdT>(id);
 
     // default to NullAtom if parser doesn't recognize atom type
@@ -90,6 +91,9 @@ template <IsAtom... Ts> struct AtomSerializer {
   static Result<Variant> read(std::istream &in) {
     AtomIdT id = util::binRead<AtomIdT>(in);
     size_t size = util::binRead<uint64_t>(in);
+
+    uint8_t flags = size >> 56;
+    size &= ~(0xFFull << 56);
 
     // Check remaining size
     const auto currentPos = in.tellg();
@@ -108,7 +112,7 @@ template <IsAtom... Ts> struct AtomSerializer {
       return std::unexpected("atom size exceeds remaining stream size");
     }
 
-    return Self::read(in, static_cast<AtomId>(id), size);
+    return Self::read(in, static_cast<AtomId>(id), size, flags);
   }
 
   static Result<> write(std::ostream &out, Variant &a) {
