@@ -64,7 +64,7 @@ public:
     // but that kinda sucks
     replay.m_meta = util::binRead<Metadata>(in);
 
-    replay.m_atoms.readAll(in);
+    TRY(replay.m_atoms.readAll(in));
 
     uint8_t footerBuf = util::binRead<uint8_t>(in);
     if (FOOTER != footerBuf) {

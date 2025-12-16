@@ -5,6 +5,8 @@
 #include "slc/formats/v3/section.hpp"
 #include "slc/util.hpp"
 
+#include <print>
+
 SLC_NS_BEGIN
 
 namespace v3 {
@@ -105,6 +107,11 @@ public:
     a.m_actions.reserve(count);
 
     while (a.m_actions.size() < count) {
+      if (in.eof()) {
+        return std::unexpected(
+            "unexpected end of stream while reading ActionAtom");
+      }
+
       Section::read(in, a.m_actions);
     }
 

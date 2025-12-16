@@ -91,6 +91,23 @@ template <IsAtom... Ts> struct AtomSerializer {
     AtomIdT id = util::binRead<AtomIdT>(in);
     size_t size = util::binRead<uint64_t>(in);
 
+    // Check remaining size
+    const auto currentPos = in.tellg();
+    if (currentPos == -1) {
+      return std::unexpected("failed to query current position");
+    }
+
+    const auto endPos = in.seekg(0, std::ios::end).tellg();
+    if (endPos == -1) {
+      return std::unexpected("failed to query end position");
+    }
+
+    in.seekg(currentPos, std::ios::beg);
+
+    if (static_cast<size_t>(endPos - currentPos) < size) {
+      return std::unexpected("atom size exceeds remaining stream size");
+    }
+
     return Self::read(in, static_cast<AtomId>(id), size);
   }
 
