@@ -6,6 +6,7 @@
 #include "slc/util.hpp"
 
 #include <cassert>
+#include <print>
 #include <vector>
 
 SLC_NS_BEGIN
@@ -285,7 +286,7 @@ public:
           const size_t start = idx + offset * cluster;
           const size_t end = idx + offset * (cluster + 1);
 
-          if (end >= N) {
+          if (end >= N || (start + cluster) > N || (idx + cluster) > N) {
             break;
           }
 

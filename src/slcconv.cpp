@@ -116,38 +116,38 @@ static void convertSlc2ToSlc3(std::string inputName, std::string outputName) {
               std::println("null atom with size {}", atom.size);
             },
             [&](slc::v3::ActionAtom &atom) {
-              std::println("action atom with {} inputs", atom.m_actions.size());
-              std::println("checking correctness...");
+              std::println("action atom with {} inputs", atom.m_actions.size()); std::println("checking
+              correctness...");
 
               for (size_t i = 0; i < atom.m_actions.size(); i++) {
-                const auto &na = atom.m_actions[i];
-                const auto &oa = oldrep->getInputs()[i];
+            const auto &na = atom.m_actions[i];
+            const auto &oa = oldrep->getInputs()[i];
 
-                if (i < 0)
-                  std::println("COMPARING ACTIONS: {} / {}, {} ({}) / {} ({}), "
-                               "{} / {}, SWIFT : {}",
-                               static_cast<int>(na.m_type),
-                               static_cast<int>(oa.m_button), na.m_frame,
-                               na.delta(), oa.m_frame, oa.m_delta, na.m_holding,
-                               oa.m_holding, na.swift());
+            if (i < 0)
+              std::println("COMPARING ACTIONS: {} / {}, {} ({}) / {}
+                           ({}),
+                           "
+                           "{} / {}, SWIFT : {}",
+                           static_cast<int>(na.m_type),
+                           static_cast<int>(oa.m_button), na.m_frame,
+                           na.delta(), oa.m_frame, oa.m_delta, na.m_holding,
+                           oa.m_holding, na.swift());
 
-                if (na.m_frame != oa.m_frame) {
-                  std::println("FRAME MISMATCH: got {}, expected {}",
-                               na.m_frame, oa.m_frame);
-                  return;
-                }
+            if (na.m_frame != oa.m_frame) {
+              std::println("FRAME MISMATCH: got {}, expected {}", na.m_frame,
+                           oa.m_frame);
+              return;
+            }
 
-                if (static_cast<int>(na.m_type) !=
-                        static_cast<int>(oa.m_button) ||
-                    na.m_holding != oa.m_holding ||
-                    na.m_player2 != oa.m_player2) {
-                  std::println("ACTION MISMATCH at frame {}", na.m_frame);
-                  std::println("{} / {}, {} / {}, swift: {}",
-                               static_cast<int>(na.m_type),
-                               static_cast<int>(oa.m_button), na.m_holding,
-                               oa.m_holding, na.swift());
-                  return;
-                }
+            if (static_cast<int>(na.m_type) != static_cast<int>(oa.m_button) ||
+                na.m_holding != oa.m_holding || na.m_player2 != oa.m_player2) {
+              std::println("ACTION MISMATCH at frame {}", na.m_frame);
+              std::println("{} / {}, {} / {}, swift: {}",
+                           static_cast<int>(na.m_type),
+                           static_cast<int>(oa.m_button), na.m_holding,
+                           oa.m_holding, na.swift());
+              return;
+            }
               }
 
               std::println("replay perfectly converted with 100% parity");
